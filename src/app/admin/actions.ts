@@ -18,6 +18,13 @@ import {
   removeTabDrafts,
   type PolicyLang,
 } from "@/lib/policy-storage";
+import { gallerySettingsDebug } from "@/lib/gallery-settings-debug";
+import {
+  normalizeGalleryDisplayConfig,
+  normalizeGalleryPreset,
+  resolveGallerySettingsForDb,
+  type GalleryDisplayConfig,
+} from "@/lib/product-gallery-display";
 
 async function guard() {
   const session = await requireAdminSession();
@@ -1011,7 +1018,9 @@ export async function deleteLoyaltyReward(formData: FormData): Promise<AdminActi
   }
 }
 
-export async function saveStoreSettings(formData: FormData): Promise<AdminActionResult> {
+export async function saveStoreSettings(
+  formData: FormData,
+): Promise<AdminActionResult<{ gallery: GalleryDisplayConfig }>> {
   try {
     const { storeId, userId } = await guard();
     const storeNameRaw = (formData.get("storeName") as string)?.trim();
@@ -1030,13 +1039,24 @@ export async function saveStoreSettings(formData: FormData): Promise<AdminAction
     const requireEmailVerificationForCheckout =
       formData.get("requireEmailVerificationForCheckout") === "on";
 
-    const presetRaw = String(formData.get("productGalleryPreset") ?? "medium").toLowerCase();
-    const productGalleryPreset =
-      presetRaw === "small" || presetRaw === "medium" || presetRaw === "large" || presetRaw === "custom"
-        ? presetRaw
-        : "medium";
-    const customH = Number(formData.get("productGalleryMaxHeightPx"));
-    const customW = Number(formData.get("productGalleryMaxWidthPx"));
+    const presetRaw = String(formData.get("productGalleryPreset") ?? "").trim().toLowerCase();
+    const preset = normalizeGalleryPreset(presetRaw || "medium");
+    const maxHeightRaw = formData.get("productGalleryMaxHeightPx");
+    const maxWidthRaw = formData.get("productGalleryMaxWidthPx");
+
+    gallerySettingsDebug("server_action_form_received", {
+      storeId,
+      presetRaw: presetRaw || "(empty → medium)",
+      preset,
+      maxHeightRaw: maxHeightRaw == null ? null : String(maxHeightRaw),
+      maxWidthRaw: maxWidthRaw == null ? null : String(maxWidthRaw),
+    });
+
+    const galleryFields = resolveGallerySettingsForDb({
+      preset,
+      maxHeightRaw: maxHeightRaw == null ? null : String(maxHeightRaw),
+      maxWidthRaw: maxWidthRaw == null ? null : String(maxWidthRaw),
+    });
 
     const payload = {
       logoUrl: logoRaw ? assertAssetPath(logoRaw) : null,
@@ -1051,18 +1071,12 @@ export async function saveStoreSettings(formData: FormData): Promise<AdminAction
       orderNumberPrefix,
       registrationEnabled,
       requireEmailVerificationForCheckout,
-      productGalleryPreset,
-      productGalleryMaxHeightPx:
-        productGalleryPreset === "custom" && Number.isFinite(customH) && customH > 0
-          ? Math.min(Math.round(customH), 2000)
-          : null,
-      productGalleryMaxWidthPx:
-        productGalleryPreset === "custom" && Number.isFinite(customW) && customW > 0
-          ? Math.min(Math.round(customW), 2000)
-          : null,
+      ...galleryFields,
     };
 
-    await prisma.storeSettings.upsert({
+    gallerySettingsDebug("server_action_prisma_update", { storeId, payload: galleryFields });
+
+    const saved = await prisma.storeSettings.upsert({
       where: { storeId },
       create: {
         storeId,
@@ -1070,12 +1084,22 @@ export async function saveStoreSettings(formData: FormData): Promise<AdminAction
         nextOrderNumber: 1001,
       },
       update: payload,
+      select: {
+        productGalleryPreset: true,
+        productGalleryMaxHeightPx: true,
+        productGalleryMaxWidthPx: true,
+      },
     });
+
+    gallerySettingsDebug("server_action_prisma_result", { storeId, saved });
+
+    const gallerySaved: GalleryDisplayConfig = normalizeGalleryDisplayConfig(saved);
+
     await logAdminAction({ userId, action: "store.settings.update", entity: "StoreSettings" });
     revalidatePath("/admin/settings");
     revalidatePath("/admin/products");
     revalidatePath("/");
-    return ok();
+    return ok({ gallery: gallerySaved });
   } catch (e) {
     return err(e instanceof Error ? e.message : "שמירת הגדרות נכשלה");
   }

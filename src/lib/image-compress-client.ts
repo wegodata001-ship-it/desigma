@@ -98,6 +98,153 @@ export async function rotateImageFromUrl90CW(url: string): Promise<File> {
   });
 }
 
+function drawTransformedImage(
+  img: CanvasImageSource,
+  width: number,
+  height: number,
+  rotationDeg: number,
+  flipH: boolean,
+  flipV: boolean,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  const rot = ((rotationDeg % 360) + 360) % 360;
+  const swap = rot === 90 || rot === 270;
+  canvas.width = swap ? height : width;
+  canvas.height = swap ? width : height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((rot * Math.PI) / 180);
+  ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  const dw = swap ? height : width;
+  const dh = swap ? width : height;
+  ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+  return canvas;
+}
+
+async function canvasToJpegFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92),
+  );
+  if (!blob) throw new Error("blob");
+  return new File([blob], name, { type: "image/jpeg" });
+}
+
+/** Export visible frame (container size) with pan/zoom/rotate/flip applied. */
+export async function exportFramedImageFromUrl(
+  url: string,
+  frameWidth: number,
+  frameHeight: number,
+  transform: {
+    zoom: number;
+    panX: number;
+    panY: number;
+    rotation: number;
+    flipH: boolean;
+    flipV: boolean;
+  },
+): Promise<File> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("load failed"));
+    el.src = url;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(frameWidth));
+  canvas.height = Math.max(1, Math.round(frameHeight));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no context");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const scale = transform.zoom;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const fitScale = Math.min(canvas.width / iw, canvas.height / ih);
+  const drawW = iw * fitScale * scale;
+  const drawH = ih * fitScale * scale;
+
+  ctx.save();
+  ctx.translate(canvas.width / 2 + transform.panX, canvas.height / 2 + transform.panY);
+  ctx.rotate((transform.rotation * Math.PI) / 180);
+  ctx.scale(transform.flipH ? -1 : 1, transform.flipV ? -1 : 1);
+  ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+
+  const base = "cropped";
+  return canvasToJpegFile(canvas, `${base}.jpg`);
+}
+
+/** Export pixels inside crop rect from the editor viewport (Instagram-style crop). */
+export async function exportCropFromViewport(
+  url: string,
+  viewportWidth: number,
+  viewportHeight: number,
+  crop: { left: number; top: number; width: number; height: number },
+  transform: {
+    zoom: number;
+    panX: number;
+    panY: number;
+    rotation: number;
+    flipH: boolean;
+    flipV: boolean;
+  },
+): Promise<File> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("load failed"));
+    el.src = url;
+  });
+
+  const vw = Math.max(1, viewportWidth);
+  const vh = Math.max(1, viewportHeight);
+  const outW = Math.max(1, Math.round(crop.width));
+  const outH = Math.max(1, Math.round(crop.height));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no context");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, outW, outH);
+
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const fitScale = Math.min(vw / iw, vh / ih);
+  const drawW = iw * fitScale * transform.zoom;
+  const drawH = ih * fitScale * transform.zoom;
+
+  ctx.save();
+  ctx.translate(-crop.left, -crop.top);
+  ctx.translate(vw / 2 + transform.panX, vh / 2 + transform.panY);
+  ctx.rotate((transform.rotation * Math.PI) / 180);
+  ctx.scale(transform.flipH ? -1 : 1, transform.flipV ? -1 : 1);
+  ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+
+  return canvasToJpegFile(canvas, "cropped.jpg");
+}
+
+export async function flipImageFromUrl(url: string, flipH: boolean, flipV: boolean): Promise<File> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("load failed"));
+    el.src = url;
+  });
+  const canvas = drawTransformedImage(img, img.naturalWidth, img.naturalHeight, 0, flipH, flipV);
+  return canvasToJpegFile(canvas, "flipped.jpg");
+}
+
 export async function rotateImageFile90CW(file: File): Promise<File> {
   const bitmap = await loadImageBitmap(file);
   try {

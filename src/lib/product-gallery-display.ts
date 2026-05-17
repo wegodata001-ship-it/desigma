@@ -4,31 +4,110 @@ export type ProductGalleryPreset = "small" | "medium" | "large" | "custom";
 
 export type GalleryDisplayConfig = {
   preset: ProductGalleryPreset;
-  maxHeightPx: number | null;
-  maxWidthPx: number | null;
+  maxHeightPx: number;
+  maxWidthPx: number;
+};
+
+/** Safe fallbacks when StoreSettings row is missing or has NULLs (admin never crashes). */
+export const GALLERY_DISPLAY_DEFAULTS: GalleryDisplayConfig = {
+  preset: "medium",
+  maxHeightPx: 900,
+  maxWidthPx: 1400,
+};
+
+export const GALLERY_PRESET_CAPS: Record<
+  Exclude<ProductGalleryPreset, "custom">,
+  { maxHeightPx: number; maxWidthPx: number }
+> = {
+  small: { maxHeightPx: 320, maxWidthPx: 320 },
+  medium: { maxHeightPx: 520, maxWidthPx: 520 },
+  large: { maxHeightPx: 680, maxWidthPx: 680 },
 };
 
 export function normalizeGalleryPreset(v: string | null | undefined): ProductGalleryPreset {
-  if (v === "small" || v === "medium" || v === "large" || v === "custom") return v;
-  return "medium";
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (s === "small" || s === "medium" || s === "large" || s === "custom") return s;
+  return GALLERY_DISPLAY_DEFAULTS.preset;
+}
+
+function normalizePositivePx(value: number | null | undefined, fallback: number): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(Math.round(value), 2000);
+}
+
+export type GallerySettingsRow = {
+  productGalleryPreset?: string | null;
+  productGalleryMaxHeightPx?: number | null;
+  productGalleryMaxWidthPx?: number | null;
+} | null;
+
+/** Single normalization entry point — use after every DB read. */
+export function normalizeGalleryDisplayConfig(row: GallerySettingsRow): GalleryDisplayConfig {
+  if (!row) return { ...GALLERY_DISPLAY_DEFAULTS };
+
+  const preset = normalizeGalleryPreset(row.productGalleryPreset);
+
+  if (preset !== "custom") {
+    const caps = GALLERY_PRESET_CAPS[preset];
+    return {
+      preset,
+      maxHeightPx: caps.maxHeightPx,
+      maxWidthPx: caps.maxWidthPx,
+    };
+  }
+
+  return {
+    preset: "custom",
+    maxHeightPx: normalizePositivePx(
+      row.productGalleryMaxHeightPx,
+      GALLERY_DISPLAY_DEFAULTS.maxHeightPx,
+    ),
+    maxWidthPx: normalizePositivePx(row.productGalleryMaxWidthPx, GALLERY_DISPLAY_DEFAULTS.maxWidthPx),
+  };
 }
 
 /** CSS max dimensions for main gallery column */
 export function galleryMainMaxStyle(cfg: GalleryDisplayConfig): CSSProperties {
-  const caps: Record<Exclude<ProductGalleryPreset, "custom">, { h: number; w: number }> = {
-    small: { h: 320, w: 320 },
-    medium: { h: 520, w: 520 },
-    large: { h: 680, w: 680 },
+  const h = normalizePositivePx(cfg.maxHeightPx, GALLERY_DISPLAY_DEFAULTS.maxHeightPx);
+  const w = normalizePositivePx(cfg.maxWidthPx, GALLERY_DISPLAY_DEFAULTS.maxWidthPx);
+  return { maxHeight: h, maxWidth: w };
+}
+
+/** Values persisted to StoreSettings from admin form / server action. */
+export function resolveGallerySettingsForDb(input: {
+  preset: ProductGalleryPreset;
+  maxHeightRaw: string | null;
+  maxWidthRaw: string | null;
+}): {
+  productGalleryPreset: ProductGalleryPreset;
+  productGalleryMaxHeightPx: number | null;
+  productGalleryMaxWidthPx: number | null;
+} {
+  const parsePx = (raw: string | null): number | null => {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    if (s === "") return null;
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.min(Math.round(n), 2000);
   };
 
-  if (cfg.preset === "custom") {
-    const h = cfg.maxHeightPx ?? 520;
-    const w = cfg.maxWidthPx ?? 520;
-    return { maxHeight: Math.min(h, 1200), maxWidth: Math.min(w, 1200) };
+  const productGalleryPreset = input.preset;
+
+  if (productGalleryPreset === "custom") {
+    return {
+      productGalleryPreset,
+      productGalleryMaxHeightPx: parsePx(input.maxHeightRaw),
+      productGalleryMaxWidthPx: parsePx(input.maxWidthRaw),
+    };
   }
 
-  const { h, w } = caps[cfg.preset];
-  return { maxHeight: h, maxWidth: w };
+  const caps = GALLERY_PRESET_CAPS[productGalleryPreset];
+  return {
+    productGalleryPreset,
+    productGalleryMaxHeightPx: caps.maxHeightPx,
+    productGalleryMaxWidthPx: caps.maxWidthPx,
+  };
 }
 
 export function galleryThumbSizeClass(cfg: GalleryDisplayConfig): string {

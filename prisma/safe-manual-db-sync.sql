@@ -16,19 +16,13 @@ ALTER TABLE "ProductImage"
 ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP,
 ALTER COLUMN "createdAt" SET NOT NULL;
 
--- 2) StoreSettings product gallery fields
-ALTER TABLE "StoreSettings"
-ADD COLUMN IF NOT EXISTS "productGalleryMaxHeightPx" INTEGER,
-ADD COLUMN IF NOT EXISTS "productGalleryMaxWidthPx" INTEGER,
-ADD COLUMN IF NOT EXISTS "productGalleryPreset" TEXT;
-
-UPDATE "StoreSettings"
-SET "productGalleryPreset" = 'medium'
-WHERE "productGalleryPreset" IS NULL;
-
-ALTER TABLE "StoreSettings"
-ALTER COLUMN "productGalleryPreset" SET DEFAULT 'medium',
-ALTER COLUMN "productGalleryPreset" SET NOT NULL;
+-- 2) StoreSettings — run prisma/safe-store-settings-patch.sql in Supabase (full idempotent patch).
+-- Minimal gallery hotfix if you only need the three gallery columns right now:
+ALTER TABLE "StoreSettings" ADD COLUMN IF NOT EXISTS "productGalleryPreset" TEXT;
+ALTER TABLE "StoreSettings" ADD COLUMN IF NOT EXISTS "productGalleryMaxHeightPx" INTEGER;
+ALTER TABLE "StoreSettings" ADD COLUMN IF NOT EXISTS "productGalleryMaxWidthPx" INTEGER;
+UPDATE "StoreSettings" SET "productGalleryPreset" = 'medium' WHERE "productGalleryPreset" IS NULL;
+ALTER TABLE "StoreSettings" ALTER COLUMN "productGalleryPreset" SET DEFAULT 'medium';
 
 -- 3) ObservabilityEvent table + indexes + FK
 CREATE TABLE IF NOT EXISTS "ObservabilityEvent" (

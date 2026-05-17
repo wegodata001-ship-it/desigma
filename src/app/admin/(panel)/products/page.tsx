@@ -2,20 +2,12 @@ import { getStoreId } from "@/lib/store-config";
 import { requireAdminSession } from "@/lib/admin-auth";
 import type { ProductRow } from "@/components/admin/products-admin-client";
 import { ProductsAdminClient } from "@/components/admin/products-admin-client";
-import {
-  normalizeGalleryPreset,
-  type GalleryDisplayConfig,
-} from "@/lib/product-gallery-display";
+import { GALLERY_DISPLAY_DEFAULTS } from "@/lib/product-gallery-display";
+import { loadGalleryDisplayForStore } from "@/lib/gallery-settings-load";
 import { prisma } from "@/lib/prisma";
 import { safeQuery } from "@/lib/server/safe-query";
 
 export const dynamic = "force-dynamic";
-
-const DEFAULT_GALLERY: GalleryDisplayConfig = {
-  preset: "medium",
-  maxHeightPx: null,
-  maxWidthPx: null,
-};
 
 const productListSelect = {
   id: true,
@@ -125,22 +117,8 @@ export default async function AdminProductsPage({
 
   const galleryDisplay = await safeQuery(
     "admin.products.gallery_settings",
-    async () => {
-      const storeSettings = await prisma.storeSettings.findUnique({
-        where: { storeId },
-        select: {
-          productGalleryPreset: true,
-          productGalleryMaxHeightPx: true,
-          productGalleryMaxWidthPx: true,
-        },
-      });
-      return {
-        preset: normalizeGalleryPreset(storeSettings?.productGalleryPreset),
-        maxHeightPx: storeSettings?.productGalleryMaxHeightPx ?? null,
-        maxWidthPx: storeSettings?.productGalleryMaxWidthPx ?? null,
-      } satisfies GalleryDisplayConfig;
-    },
-    DEFAULT_GALLERY,
+    () => loadGalleryDisplayForStore(storeId),
+    GALLERY_DISPLAY_DEFAULTS,
     { timeoutMs: 8_000 },
   );
 

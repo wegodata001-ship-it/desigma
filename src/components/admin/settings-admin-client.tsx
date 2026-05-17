@@ -2,11 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { AdminSpinner } from "@/components/admin/admin-spinner";
 import { saveHomeHero, saveStoreSettings } from "@/app/admin/actions";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
+import { gallerySettingsDebug } from "@/lib/gallery-settings-debug";
+import {
+  GALLERY_PRESET_CAPS,
+  normalizeGalleryPreset,
+  type ProductGalleryPreset,
+} from "@/lib/product-gallery-display";
 
 export function SettingsAdminClient({
   storeName,
@@ -28,8 +34,8 @@ export function SettingsAdminClient({
     registrationEnabled: boolean;
     requireEmailVerificationForCheckout: boolean;
     productGalleryPreset: string;
-    productGalleryMaxHeightPx: number | null;
-    productGalleryMaxWidthPx: number | null;
+    productGalleryMaxHeightPx: number;
+    productGalleryMaxWidthPx: number;
   };
   hero: {
     heroTitle_he: string | null;
@@ -45,7 +51,27 @@ export function SettingsAdminClient({
   const [toast, setToast] = useState<string | null>(null);
   const { t } = useAdminI18n();
 
+  const [galleryPreset, setGalleryPreset] = useState<ProductGalleryPreset>(() =>
+    normalizeGalleryPreset(settings.productGalleryPreset),
+  );
+  const [galleryMaxH, setGalleryMaxH] = useState(() => String(settings.productGalleryMaxHeightPx));
+  const [galleryMaxW, setGalleryMaxW] = useState(() => String(settings.productGalleryMaxWidthPx));
+
   const refresh = () => startTransition(() => router.refresh());
+
+  const applyPresetToFormFields = (preset: ProductGalleryPreset) => {
+    if (preset === "custom") return;
+    const caps = GALLERY_PRESET_CAPS[preset];
+    setGalleryMaxH(String(caps.maxHeightPx));
+    setGalleryMaxW(String(caps.maxWidthPx));
+  };
+
+  useEffect(() => {
+    const preset = normalizeGalleryPreset(settings.productGalleryPreset);
+    setGalleryPreset(preset);
+    setGalleryMaxH(String(settings.productGalleryMaxHeightPx));
+    setGalleryMaxW(String(settings.productGalleryMaxWidthPx));
+  }, [settings.productGalleryPreset, settings.productGalleryMaxHeightPx, settings.productGalleryMaxWidthPx]);
 
   return (
     <div className="space-y-8">
@@ -65,9 +91,30 @@ export function SettingsAdminClient({
               const path = await uploadAdminAsset(fi.files[0], "logo");
               fd.set("logoUrl", path);
             }
+
+            fd.set("productGalleryPreset", galleryPreset);
+            fd.set("productGalleryMaxHeightPx", galleryMaxH.trim());
+            fd.set("productGalleryMaxWidthPx", galleryMaxW.trim());
+
+            gallerySettingsDebug("client_submit", {
+              galleryPreset,
+              galleryMaxH: galleryMaxH.trim() || null,
+              galleryMaxW: galleryMaxW.trim() || null,
+              formPreset: fd.get("productGalleryPreset"),
+              formMaxH: fd.get("productGalleryMaxHeightPx"),
+              formMaxW: fd.get("productGalleryMaxWidthPx"),
+            });
+
             const res = await saveStoreSettings(fd);
             if (!res.ok) setToast(res.error);
             else {
+              if (res.data?.gallery) {
+                const g = res.data.gallery;
+                gallerySettingsDebug("client_save_result", { gallery: g });
+                setGalleryPreset(g.preset);
+                setGalleryMaxH(String(g.maxHeightPx));
+                setGalleryMaxW(String(g.maxWidthPx));
+              }
               setToast(t("savedSuccessfully"));
               refresh();
             }
@@ -122,7 +169,12 @@ export function SettingsAdminClient({
               {t("productGalleryPresetLabel")}
               <select
                 name="productGalleryPreset"
-                defaultValue={settings.productGalleryPreset}
+                value={galleryPreset}
+                onChange={(e) => {
+                  const next = normalizeGalleryPreset(e.target.value);
+                  setGalleryPreset(next);
+                  applyPresetToFormFields(next);
+                }}
                 className="ds-input mt-1 text-sm"
               >
                 <option value="small">{t("galleryPresetSmall")}</option>
@@ -140,8 +192,10 @@ export function SettingsAdminClient({
                   min={100}
                   max={2000}
                   placeholder="520"
-                  defaultValue={settings.productGalleryMaxHeightPx ?? ""}
-                  className="ds-input mt-1 text-sm"
+                  value={galleryMaxH}
+                  onChange={(e) => setGalleryMaxH(e.target.value)}
+                  disabled={galleryPreset !== "custom"}
+                  className="ds-input mt-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </label>
               <label className="text-xs font-medium">
@@ -152,8 +206,10 @@ export function SettingsAdminClient({
                   min={100}
                   max={2000}
                   placeholder="520"
-                  defaultValue={settings.productGalleryMaxWidthPx ?? ""}
-                  className="ds-input mt-1 text-sm"
+                  value={galleryMaxW}
+                  onChange={(e) => setGalleryMaxW(e.target.value)}
+                  disabled={galleryPreset !== "custom"}
+                  className="ds-input mt-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </label>
             </div>

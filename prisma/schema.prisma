@@ -183,7 +183,8 @@ model StoreSettings {
   heroSubtitle_ar   String?
   heroSubtitle_en   String?
   /// Product detail gallery image size preset for storefront + admin preview (small | medium | large | custom).
-  productGalleryPreset       String  @default("medium")
+  /// Nullable in DB for legacy rows — app layer always normalizes before use.
+  productGalleryPreset       String? @default("medium")
   /// Used when preset is custom — max height in px (optional clamp).
   productGalleryMaxHeightPx  Int?
   /// Used when preset is custom — max width in px (optional clamp).

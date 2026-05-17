@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
+import { ProductMediaEditor } from "@/components/admin/product-media-editor";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
 import {
@@ -11,13 +12,8 @@ import {
   setMainProductImage,
   setProductImageOrder,
 } from "@/app/admin/actions";
-import { compressImageForUpload, rotateImageFromUrl90CW } from "@/lib/image-compress-client";
-import {
-  galleryMainMaxStyle,
-  galleryThumbSizeClass,
-  type GalleryDisplayConfig,
-} from "@/lib/product-gallery-display";
-import { resolvePublicAssetSrc } from "@/lib/assets-path";
+import { compressImageForUpload } from "@/lib/image-compress-client";
+import type { GalleryDisplayConfig } from "@/lib/product-gallery-display";
 
 export type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 
@@ -45,9 +41,15 @@ export function ProductImagesSection({
   const fileInputId = useId();
   const [ordered, setOrdered] = useState<Img[]>(() => sortImages(product?.images ?? []));
   const [activeIdx, setActiveIdx] = useState(0);
-  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [dragId, setDragId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   useEffect(() => {
     const next = sortImages(product?.images ?? []);
@@ -56,8 +58,6 @@ export function ProductImagesSection({
   }, [product?.images]);
 
   const active = ordered[activeIdx] ?? null;
-  const mainStyle = galleryMainMaxStyle(galleryDisplay);
-  const thumbClass = galleryThumbSizeClass(galleryDisplay);
 
   const onDropFiles = useCallback(
     (list: FileList | File[]) => {
@@ -142,32 +142,14 @@ export function ProductImagesSection({
   }, [previews]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold text-slate-900">{t("productImagesLabel")}</div>
-          <p className="text-xs text-slate-500">{t("productImagesStudioHint")}</p>
-        </div>
-        <div className="flex rounded-lg border border-slate-200 p-0.5 text-xs font-medium">
-          <button
-            type="button"
-            className={`rounded-md px-3 py-1.5 ${previewMode === "desktop" ? "bg-slate-900 text-white" : "text-slate-600"}`}
-            onClick={() => setPreviewMode("desktop")}
-          >
-            {t("previewDesktop")}
-          </button>
-          <button
-            type="button"
-            className={`rounded-md px-3 py-1.5 ${previewMode === "mobile" ? "bg-slate-900 text-white" : "text-slate-600"}`}
-            onClick={() => setPreviewMode("mobile")}
-          >
-            {t("previewMobile")}
-          </button>
-        </div>
+    <div className="space-y-5">
+      <div>
+        <div className="text-sm font-semibold text-slate-900">{t("productImagesLabel")}</div>
+        <p className="mt-0.5 text-xs text-slate-500">{t("productImagesStudioHint")}</p>
       </div>
 
       <div
-        className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-6 transition hover:border-blue-400 hover:bg-blue-50/30"
+        className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-8 transition hover:border-blue-400 hover:bg-blue-50/30"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -208,9 +190,10 @@ export function ProductImagesSection({
                 <Image
                   src={p.url}
                   alt=""
-                  width={88}
-                  height={88}
-                  className="h-20 w-20 rounded-lg border border-emerald-200 object-cover"
+                  width={112}
+                  height={112}
+                  unoptimized
+                  className="h-28 w-28 rounded-xl border border-emerald-200 object-cover shadow-sm"
                 />
               </li>
             ))}
@@ -218,123 +201,105 @@ export function ProductImagesSection({
         </div>
       )}
 
-      {product && ordered.length > 0 && (
-        <div className={previewMode === "mobile" ? "mx-auto max-w-[360px]" : ""}>
-          <div className="grid gap-4 lg:grid-cols-[minmax(80px,96px)_minmax(0,1fr)_minmax(0,220px)]">
-            <div className="flex flex-row gap-2 overflow-x-auto pb-1 lg:max-h-[420px] lg:flex-col lg:overflow-y-auto lg:pb-0">
-              {ordered.map((im, idx) => (
+      {product && ordered.length > 0 && active && (
+        <div className="space-y-4">
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {ordered.map((im, idx) => (
+              <div
+                key={im.id}
+                draggable
+                onDragStart={() => setDragId(im.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => void handleDropReorder(im.id)}
+                className={`group/thumb relative shrink-0 ${
+                  idx === activeIdx ? "ring-2 ring-blue-500 ring-offset-2" : ""
+                }`}
+              >
                 <button
-                  key={im.id}
                   type="button"
-                  draggable
-                  onDragStart={() => setDragId(im.id)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => void handleDropReorder(im.id)}
                   onClick={() => setActiveIdx(idx)}
-                  className={`relative shrink-0 overflow-hidden rounded-xl border-2 transition ${thumbClass} ${
-                    idx === activeIdx ? "border-blue-600 ring-2 ring-blue-200" : "border-slate-200"
+                  className={`relative h-24 w-24 overflow-hidden rounded-xl border-2 transition md:h-28 md:w-28 ${
+                    idx === activeIdx
+                      ? "border-blue-600 shadow-md"
+                      : "border-slate-200 hover:border-blue-400 hover:shadow"
                   }`}
                 >
-                  <div className="relative h-full w-full min-h-[3rem] min-w-[3rem]">
-                    <AssetImg path={im.url} alt="" className="object-cover" />
-                  </div>
+                  <AssetImg path={im.url} alt="" className="object-cover transition group-hover/thumb:scale-105" />
                   {im.isMain && (
-                    <span className="absolute bottom-0 left-0 right-0 bg-blue-600/90 py-0.5 text-center text-[10px] font-bold text-white">
+                    <span className="absolute bottom-0 left-0 right-0 bg-blue-600/95 py-0.5 text-center text-[10px] font-bold text-white">
                       {t("main")}
                     </span>
                   )}
                 </button>
-              ))}
-            </div>
-
-            <div
-              className="relative flex min-h-[260px] items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100"
-              style={mainStyle}
-            >
-              {active && (
-                <div className="relative h-full w-full min-h-[240px] p-2">
-                  <AssetImg
-                    path={active.url}
-                    alt=""
-                    className="max-h-[min(68vh,680px)] w-full object-contain transition duration-300 hover:scale-[1.01]"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("imageActions")}</div>
-              {active && (
-                <>
-                  <button
-                    type="button"
-                    disabled={busyId === active.id}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50"
-                    onClick={async () => {
-                      const fd = new FormData();
-                      fd.append("productId", product.id);
-                      fd.append("imageId", active.id);
-                      const res = await setMainProductImage(fd);
-                      if (res.ok) onRefresh?.();
-                    }}
+                <div className="pointer-events-none absolute inset-0 flex items-start justify-end gap-1 p-1 opacity-0 transition group-hover/thumb:pointer-events-auto group-hover/thumb:opacity-100">
+                  <label
+                    className="pointer-events-auto cursor-pointer rounded-md bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow hover:bg-white"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    ★ {t("setAsMainImage")}
-                  </button>
-                  <label className="block w-full cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50">
-                    ↻ {t("replaceImage")}
+                    ↻
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const f = e.target.files?.[0];
                         e.target.value = "";
-                        if (!f) return;
-                        await runReplaceUpload(active.id, f);
+                        if (f) void runReplaceUpload(im.id, f);
                       }}
                     />
                   </label>
                   <button
                     type="button"
-                    disabled={busyId === active.id}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50"
-                    onClick={async () => {
-                      try {
-                        const rotated = await rotateImageFromUrl90CW(resolvePublicAssetSrc(active.url));
-                        await runReplaceUpload(active.id, rotated);
-                      } catch {
-                        /* CORS or load — ignore */
-                      }
-                    }}
-                  >
-                    ⟳ {t("rotate90")}
-                  </button>
-                  <a
-                    href={resolvePublicAssetSrc(active.url)}
-                    download
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  >
-                    ⬇ {t("downloadImage")}
-                  </a>
-                  <button
-                    type="button"
-                    className="w-full rounded-lg border border-red-200 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
-                    onClick={async () => {
+                    className="pointer-events-auto rounded-md bg-red-600/95 px-1.5 py-0.5 text-[10px] font-bold text-white shadow hover:bg-red-600"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       const fd = new FormData();
-                      fd.append("imageId", active.id);
-                      const res = await deleteProductImage(fd);
-                      if (res.ok) onRefresh?.();
+                      fd.append("imageId", im.id);
+                      void deleteProductImage(fd).then((res) => {
+                        if (res.ok) onRefresh?.();
+                      });
                     }}
                   >
-                    ✕ {t("deleteShort")}
+                    ✕
                   </button>
-                </>
-              )}
-            </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <p className="mt-2 text-xs text-slate-400">{t("dragReorderHint")}</p>
+          <p className="text-xs text-slate-400">{t("dragReorderHint")}</p>
+
+          {toast && (
+            <div
+              role="status"
+              className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-opacity"
+            >
+              {toast}
+            </div>
+          )}
+
+          <ProductMediaEditor
+            key={active.id}
+            imageUrl={active.url}
+            alt={t("productImagesLabel")}
+            galleryDisplay={galleryDisplay}
+            isMain={active.isMain}
+            busy={busyId === active.id}
+            onCropSaved={() => setToast(t("imageCropSaved"))}
+            onSetMain={async () => {
+              const fd = new FormData();
+              fd.append("productId", product.id);
+              fd.append("imageId", active.id);
+              const res = await setMainProductImage(fd);
+              if (res.ok) onRefresh?.();
+            }}
+            onReplaceFile={async (file) => runReplaceUpload(active.id, file)}
+            onDelete={async () => {
+              const fd = new FormData();
+              fd.append("imageId", active.id);
+              const res = await deleteProductImage(fd);
+              if (res.ok) onRefresh?.();
+            }}
+          />
         </div>
       )}
     </div>

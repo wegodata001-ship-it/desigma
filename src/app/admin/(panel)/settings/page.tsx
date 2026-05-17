@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { SettingsAdminClient } from "@/components/admin/settings-admin-client";
+import { loadGalleryDisplayForStore } from "@/lib/gallery-settings-load";
 import { safeQuery } from "@/lib/server/safe-query";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export default async function AdminSettingsPage() {
     async () => {
       const store = await prisma.store.findUnique({ where: { id: storeId } });
       if (!store) return null;
+
+      const gallery = await loadGalleryDisplayForStore(storeId);
 
       let settings = await prisma.storeSettings.findUnique({
         where: { storeId },
@@ -31,9 +34,6 @@ export default async function AdminSettingsPage() {
           rtlEnabled: true,
           registrationEnabled: true,
           requireEmailVerificationForCheckout: true,
-          productGalleryPreset: true,
-          productGalleryMaxHeightPx: true,
-          productGalleryMaxWidthPx: true,
           heroTitle_he: true,
           heroTitle_ar: true,
           heroTitle_en: true,
@@ -44,7 +44,12 @@ export default async function AdminSettingsPage() {
       });
       if (!settings) {
         settings = await prisma.storeSettings.create({
-          data: { storeId },
+          data: {
+            storeId,
+            productGalleryPreset: gallery.preset,
+            productGalleryMaxHeightPx: gallery.maxHeightPx,
+            productGalleryMaxWidthPx: gallery.maxWidthPx,
+          },
           select: {
             logoUrl: true,
             primaryColor: true,
@@ -58,9 +63,6 @@ export default async function AdminSettingsPage() {
             rtlEnabled: true,
             registrationEnabled: true,
             requireEmailVerificationForCheckout: true,
-            productGalleryPreset: true,
-            productGalleryMaxHeightPx: true,
-            productGalleryMaxWidthPx: true,
             heroTitle_he: true,
             heroTitle_ar: true,
             heroTitle_en: true,
@@ -71,7 +73,7 @@ export default async function AdminSettingsPage() {
         });
       }
 
-      return { store, settings };
+      return { store, settings, gallery };
     },
     null,
     { timeoutMs: 25_000 },
@@ -86,7 +88,7 @@ export default async function AdminSettingsPage() {
     );
   }
 
-  const { store, settings } = payload;
+  const { store, settings, gallery } = payload;
 
   return (
     <SettingsAdminClient
@@ -104,9 +106,9 @@ export default async function AdminSettingsPage() {
         rtlEnabled: settings.rtlEnabled,
         registrationEnabled: settings.registrationEnabled,
         requireEmailVerificationForCheckout: settings.requireEmailVerificationForCheckout,
-        productGalleryPreset: settings.productGalleryPreset ?? "medium",
-        productGalleryMaxHeightPx: settings.productGalleryMaxHeightPx,
-        productGalleryMaxWidthPx: settings.productGalleryMaxWidthPx,
+        productGalleryPreset: gallery.preset,
+        productGalleryMaxHeightPx: gallery.maxHeightPx,
+        productGalleryMaxWidthPx: gallery.maxWidthPx,
       }}
       hero={{
         heroTitle_he: settings.heroTitle_he,
