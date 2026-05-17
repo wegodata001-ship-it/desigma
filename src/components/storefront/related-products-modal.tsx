@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AssetImg } from "@/components/asset-img";
 import { useCart } from "@/components/cart-context";
-import { pickLocalized } from "@/lib/localized";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { crossSellModalDebug } from "@/lib/cross-sell-modal-debug";
+import { pickLocalized } from "@/lib/localized";
+import { forceUnlockBodyScroll, lockBodyScroll } from "@/lib/modal-scroll-lock";
 
 type RelatedProduct = {
   id: string;
@@ -15,6 +18,10 @@ type RelatedProduct = {
   stock: number;
   image: string | null;
 };
+
+type ModalPhase = "selecting" | "adding" | "closing";
+
+const ADD_TIMEOUT_MS = 12_000;
 
 export function RelatedProductsModal({
   open,
@@ -31,35 +38,158 @@ export function RelatedProductsModal({
 }) {
   const { addItem } = useCart();
   const { lang, dir } = useStoreI18n();
+
+  const [mounted, setMounted] = useState(false);
+  const [phase, setPhase] = useState<ModalPhase>("selecting");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const addingRef = useRef(false);
+  const addTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const items = useMemo(() => related.filter((p) => p.stock > 0), [related]);
+  const busy = phase === "adding";
 
-  if (!open) return null;
-
-  const toggle = (id: string) => setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  const addAll = () => {
-    addItem(main.productId, main.qty, main.optionIds);
-    for (const p of items) {
-      if (selected[p.id]) addItem(p.id, 1, []);
+  const clearAddTimeout = useCallback(() => {
+    if (addTimeoutRef.current) {
+      clearTimeout(addTimeoutRef.current);
+      addTimeoutRef.current = null;
     }
-    onClose();
-  };
+  }, []);
 
-  return (
+  const runCleanup = useCallback(() => {
+    crossSellModalDebug("cleanup_triggered");
+    clearAddTimeout();
+    addingRef.current = false;
+    setPhase("selecting");
+    setSelected({});
+    setError(null);
+    forceUnlockBodyScroll();
+  }, [clearAddTimeout]);
+
+  const requestClose = useCallback(() => {
+    crossSellModalDebug("modal_close");
+    setPhase("closing");
+    runCleanup();
+    onClose();
+    crossSellModalDebug("cleanup_complete");
+  }, [onClose, runCleanup]);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => {
+      runCleanup();
+      crossSellModalDebug("unmount_cleanup");
+    };
+  }, [runCleanup]);
+
+  useEffect(() => {
+    if (!open) {
+      runCleanup();
+      return;
+    }
+
+    setPhase("selecting");
+    setError(null);
+    setSelected({});
+    addingRef.current = false;
+    crossSellModalDebug("modal_open", { productId: main.productId, relatedCount: items.length });
+
+    const unlockScroll = lockBodyScroll();
+    return () => {
+      unlockScroll();
+      crossSellModalDebug("scroll_lock_released");
+    };
+  }, [open, main.productId, items.length, runCleanup]);
+
+  useEffect(() => {
+    if (!open || !mounted) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, mounted, requestClose]);
+
+  const commitAddToCart = useCallback(() => {
+    if (addingRef.current) return;
+    addingRef.current = true;
+    setPhase("adding");
+    setError(null);
+    crossSellModalDebug("add_start", {
+      productId: main.productId,
+      selectedCount: Object.values(selected).filter(Boolean).length,
+    });
+
+    clearAddTimeout();
+    addTimeoutRef.current = setTimeout(() => {
+      crossSellModalDebug("add_timeout");
+      setError("הפעולה לקחה יותר מדי זמן. נסו שוב.");
+      addingRef.current = false;
+      setPhase("selecting");
+    }, ADD_TIMEOUT_MS);
+
+    try {
+      addItem(main.productId, main.qty, main.optionIds);
+      for (const p of items) {
+        if (selected[p.id]) addItem(p.id, 1, []);
+      }
+      crossSellModalDebug("add_success");
+      requestClose();
+    } catch (e) {
+      crossSellModalDebug("add_failure", { message: e instanceof Error ? e.message : String(e) });
+      setError("לא הצלחנו להוסיף לסל. נסו שוב.");
+      setPhase("selecting");
+    } finally {
+      clearAddTimeout();
+      addingRef.current = false;
+    }
+  }, [addItem, clearAddTimeout, items, main.optionIds, main.productId, main.qty, requestClose, selected]);
+
+  const skipAndAddMain = useCallback(() => {
+    if (addingRef.current) return;
+    addingRef.current = true;
+    setPhase("adding");
+    crossSellModalDebug("skip_add_main");
+    clearAddTimeout();
+    try {
+      addItem(main.productId, main.qty, main.optionIds);
+      crossSellModalDebug("add_success");
+      requestClose();
+    } catch (e) {
+      crossSellModalDebug("add_failure", { message: e instanceof Error ? e.message : String(e) });
+      setError("לא הצלחנו להוסיף לסל.");
+      setPhase("selecting");
+    } finally {
+      addingRef.current = false;
+    }
+  }, [addItem, clearAddTimeout, main.optionIds, main.productId, main.qty, requestClose]);
+
+  if (!mounted || !open) return null;
+
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-50 bg-black/70" onClick={onClose} />
       <div
+        className="fixed inset-0 z-[200] bg-black/70"
+        aria-hidden
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) requestClose();
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal
+        aria-labelledby="cross-sell-modal-title"
         dir={dir}
-        className="fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-xl rounded-t-3xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl md:inset-y-0 md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-3xl"
+        className="pointer-events-auto fixed inset-x-0 bottom-0 z-[210] mx-auto w-full max-w-xl rounded-t-3xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl md:inset-y-0 md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:w-[min(100%,28rem)] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-3xl"
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-lg font-black text-white">השלם את הקנייה שלך</div>
+            <div id="cross-sell-modal-title" className="text-lg font-black text-white">השלם את הקנייה שלך</div>
             <div className="mt-1 text-sm text-zinc-400">לקוחות קונים גם את המוצרים האלו</div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-200">
+          <button type="button" onClick={requestClose} className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-200" aria-label="סגור">
             ✕
           </button>
         </div>
@@ -88,8 +218,9 @@ export function RelatedProductsModal({
               <button
                 key={p.id}
                 type="button"
-                onClick={() => toggle(p.id)}
-                className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-start transition ${
+                disabled={busy}
+                onClick={() => setSelected((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-start transition disabled:opacity-60 ${
                   checked
                     ? "border-blue-500 bg-blue-500/10 shadow-[0_0_0_1px_rgba(37,99,235,0.25)]"
                     : "border-zinc-800 bg-zinc-900/60 hover:border-blue-500/50"
@@ -116,27 +247,30 @@ export function RelatedProductsModal({
           {items.length === 0 && <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-400">אין מוצרים משלימים זמינים.</div>}
         </div>
 
+        {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
+
         <div className="mt-4 grid gap-2 md:grid-cols-2">
           <button
             type="button"
-            onClick={addAll}
-            className="rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:-translate-y-0.5"
+            onClick={commitAddToCart}
+            disabled={busy}
+            className="rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            הוסף לסל והמשך
+            {busy ? "מוסיף לסל…" : "הוסף לסל והמשך"}
           </button>
           <button
             type="button"
-            onClick={() => {
-              addItem(main.productId, main.qty, main.optionIds);
-              onClose();
-            }}
-            className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 hover:border-zinc-700"
+            onClick={skipAndAddMain}
+            disabled={busy}
+            className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 hover:border-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             דלג
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
+
 

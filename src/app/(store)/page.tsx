@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
+import { safeQuery } from "@/lib/server/safe-query";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const storeId = getStoreId();
+async function loadHomeData(storeId: string) {
   const [banners, categories, products] = await Promise.all([
     prisma.banner.findMany({
       where: { storeId, active: true },
@@ -26,6 +26,19 @@ export default async function HomePage() {
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
     }),
   ]);
+  return { banners, categories, products };
+}
+
+type HomeLoaded = Awaited<ReturnType<typeof loadHomeData>>;
+
+export default async function HomePage() {
+  const storeId = getStoreId();
+  const { banners, categories, products } = await safeQuery(
+    "store.home",
+    () => loadHomeData(storeId),
+    { banners: [], categories: [], products: [] } as HomeLoaded,
+    { timeoutMs: 25_000 },
+  );
 
   const heroBanner = banners.find((b) => b.isHero) ?? null;
   const nonHeroBanners = banners.filter((b) => !b.isHero);

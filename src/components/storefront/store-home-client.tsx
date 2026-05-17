@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { AssetImg } from "@/components/asset-img";
 import { HeroSlider } from "@/components/storefront/hero-slider";
 import { BenefitsRow } from "@/components/storefront/benefits-row";
@@ -80,7 +81,11 @@ export function StoreHomeClient({
     <div dir={dir}>
       <HeroSlider banners={banners} />
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-4 md:space-y-7 md:py-6">
-        <FeaturedCategories categories={categories} />
+        <Suspense
+          fallback={<div className="min-h-[100px] animate-pulse rounded-2xl bg-zinc-900/30" aria-hidden />}
+        >
+          <FeaturedCategories categories={categories} />
+        </Suspense>
         <BenefitsRow />
         <ProductGrid title={t("hotDeals")} products={featured} />
         <ProductGrid title="Best Sellers" products={bestSellers} />

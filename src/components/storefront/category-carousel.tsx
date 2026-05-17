@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
+import { SubcategoryPillLink } from "@/components/storefront/subcategory-pill-link";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
 
@@ -17,6 +19,8 @@ type CategoryItem = {
 
 export function CategoryCarousel({ categories }: { categories: CategoryItem[] }) {
   const { lang, t } = useStoreI18n();
+  const searchParams = useSearchParams();
+  const selectedCatId = searchParams.get("cat")?.trim() ?? "";
   const scroller = useRef<HTMLDivElement>(null);
   const [openMain, setOpenMain] = useState<string | null>(null);
   const mains = useMemo(() => categories.filter((c) => c.parentId == null), [categories]);
@@ -81,16 +85,16 @@ export function CategoryCarousel({ categories }: { categories: CategoryItem[] })
         })}
       </div>
       {openMain && (childrenByParent.get(openMain)?.length ?? 0) > 0 && (
-        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/80 p-2 transition-all">
-          <div className="flex flex-wrap gap-2">
+        <div className="overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/85 p-3 transition-all sm:p-4">
+          <div className="flex flex-wrap gap-2.5 sm:gap-3">
             {(childrenByParent.get(openMain) ?? []).map((child) => (
-              <Link
+              <SubcategoryPillLink
                 key={child.id}
                 href={`/products?cat=${encodeURIComponent(child.id)}`}
-                className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300"
-              >
-                {pickLocalized(child, "name", lang)}
-              </Link>
+                label={pickLocalized(child, "name", lang)}
+                imageUrl={child.imageUrl}
+                active={selectedCatId === child.id}
+              />
             ))}
           </div>
         </div>

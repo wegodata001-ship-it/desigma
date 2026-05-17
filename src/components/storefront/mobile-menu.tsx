@@ -59,6 +59,7 @@ export function MobileMenu({
 
             <div className="mt-4">
               <CategoryAccordion
+                variant="dark"
                 categories={categories}
                 onNavigate={onClose}
                 className="space-y-2"

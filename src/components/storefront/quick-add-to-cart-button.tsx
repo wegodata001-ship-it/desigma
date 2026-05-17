@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useCart } from "@/components/cart-context";
-import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { RelatedProductsModal } from "@/components/storefront/related-products-modal";
+import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { crossSellModalDebug } from "@/lib/cross-sell-modal-debug";
 
 type RelatedProduct = {
   id: string;
@@ -15,6 +16,10 @@ type RelatedProduct = {
   image: string | null;
 };
 
+type FlowPhase = "idle" | "fetching" | "open";
+
+const FETCH_TIMEOUT_MS = 8_000;
+
 export function QuickAddToCartButton({
   product,
   disabled,
@@ -24,31 +29,61 @@ export function QuickAddToCartButton({
 }) {
   const { addItem } = useCart();
   const { t } = useStoreI18n();
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<FlowPhase>("idle");
+  const [modalOpen, setModalOpen] = useState(false);
   const [related, setRelated] = useState<RelatedProduct[]>([]);
+  const inFlightRef = useRef(false);
+
+  const busy = phase === "fetching";
+
+  const handleModalClose = useCallback(() => {
+    crossSellModalDebug("quick_add_modal_closed");
+    setModalOpen(false);
+    setPhase("idle");
+    setRelated([]);
+    inFlightRef.current = false;
+  }, []);
 
   const click = async () => {
-    if (disabled || loading) return;
-    setLoading(true);
+    if (disabled || inFlightRef.current || modalOpen) return;
+    inFlightRef.current = true;
+    setPhase("fetching");
+    crossSellModalDebug("quick_add_start", { productId: product.id });
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let openedModal = false;
+
     try {
-      const res = await fetch(`/api/products/related?productId=${encodeURIComponent(product.id)}`);
+      const res = await fetch(`/api/products/related?productId=${encodeURIComponent(product.id)}`, {
+        signal: controller.signal,
+      });
       if (!res.ok) {
+        crossSellModalDebug("quick_add_fetch_failed", { status: res.status });
         addItem(product.id, 1, []);
         return;
       }
       const data = (await res.json()) as { related?: RelatedProduct[] };
       const rel = Array.isArray(data.related) ? data.related : [];
       if (rel.length === 0) {
+        crossSellModalDebug("quick_add_no_related");
         addItem(product.id, 1, []);
         return;
       }
       setRelated(rel);
-      setOpen(true);
-    } catch {
+      openedModal = true;
+      setModalOpen(true);
+      setPhase("open");
+      crossSellModalDebug("quick_add_modal_open");
+    } catch (e) {
+      crossSellModalDebug("quick_add_error", {
+        message: e instanceof Error ? e.message : String(e),
+      });
       addItem(product.id, 1, []);
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeoutId);
+      inFlightRef.current = false;
+      if (!openedModal) setPhase("idle");
     }
   };
 
@@ -56,23 +91,20 @@ export function QuickAddToCartButton({
     <>
       <button
         type="button"
-        disabled={disabled || loading}
+        disabled={disabled || busy || modalOpen}
         onClick={() => void click()}
         className="w-full rounded-xl border border-orange-500/40 bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:-translate-y-0.5 hover:shadow-orange-700/40 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-400"
       >
-        {disabled ? t("outOfStock") : loading ? "טוען…" : t("addToCart")}
+        {disabled ? t("outOfStock") : busy ? "טוען…" : t("addToCart")}
       </button>
 
-      {open && (
-        <RelatedProductsModal
-          open={open}
-          onClose={() => setOpen(false)}
-          main={{ productId: product.id, qty: 1, optionIds: [], title: product.title }}
-          mainDisplay={{ image: product.image, price: product.price }}
-          related={related}
-        />
-      )}
+      <RelatedProductsModal
+        open={modalOpen}
+        onClose={handleModalClose}
+        main={{ productId: product.id, qty: 1, optionIds: [], title: product.title }}
+        mainDisplay={{ image: product.image, price: product.price }}
+        related={related}
+      />
     </>
   );
 }
-

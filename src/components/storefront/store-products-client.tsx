@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { ProductGrid } from "@/components/storefront/product-grid";
 import { pickLocalized } from "@/lib/localized";
 import type { StoreProductCardData } from "@/components/storefront/product-card";
 import { CategoryAccordion } from "@/components/storefront/category-accordion";
+import { SubcategoryPillLink } from "@/components/storefront/subcategory-pill-link";
 
 type Category = {
   id: string;
@@ -13,6 +15,7 @@ type Category = {
   name_he: string;
   name_ar: string;
   name_en: string;
+  imageUrl?: string | null;
 };
 
 export function StoreProductsClient({
@@ -26,6 +29,16 @@ export function StoreProductsClient({
 }) {
   const { lang, dir } = useStoreI18n();
   const selected = selectedCategoryId ? categories.find((c) => c.id === selectedCategoryId) : null;
+
+  const subcategoryChips = useMemo(() => {
+    if (!selected) return [];
+    if (!selected.parentId) {
+      const subs = categories.filter((c) => c.parentId === selected.id);
+      return subs.length ? subs : [];
+    }
+    return categories.filter((c) => c.parentId === selected.parentId);
+  }, [categories, selected]);
+
   return (
     <div dir={dir} className="mx-auto max-w-7xl px-4 py-6">
       <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
@@ -43,6 +56,7 @@ export function StoreProductsClient({
             </Link>
           </div>
           <CategoryAccordion
+            variant="dark"
             categories={categories}
             selectedId={selected?.id ?? undefined}
             hrefForId={(id) => `/products?cat=${encodeURIComponent(id)}`}
@@ -51,6 +65,19 @@ export function StoreProductsClient({
         </aside>
 
         <div className="space-y-6">
+          {subcategoryChips.length > 0 && (
+            <div className="flex flex-wrap gap-2.5 gap-y-3">
+              {subcategoryChips.map((c) => (
+                <SubcategoryPillLink
+                  key={c.id}
+                  href={`/products?cat=${encodeURIComponent(c.id)}`}
+                  label={pickLocalized(c, "name", lang)}
+                  imageUrl={c.imageUrl}
+                  active={selectedCategoryId === c.id}
+                />
+              ))}
+            </div>
+          )}
           <div className="text-sm text-zinc-400">
             {selected ? (
               <>

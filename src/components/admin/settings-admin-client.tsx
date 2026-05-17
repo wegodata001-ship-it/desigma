@@ -27,6 +27,9 @@ export function SettingsAdminClient({
     secondaryColor: string;
     registrationEnabled: boolean;
     requireEmailVerificationForCheckout: boolean;
+    productGalleryPreset: string;
+    productGalleryMaxHeightPx: number | null;
+    productGalleryMaxWidthPx: number | null;
   };
   hero: {
     heroTitle_he: string | null;
@@ -111,6 +114,50 @@ export function SettingsAdminClient({
             {t("orderNumberPrefix")}
             <input name="orderNumberPrefix" defaultValue={settings.orderNumberPrefix} className="ds-input mt-1 font-mono text-sm uppercase" />
           </label>
+
+          <div className="col-span-full border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-800">{t("productGalleryDisplayTitle")}</h3>
+            <p className="mt-1 text-xs text-slate-500">{t("productGalleryDisplayHint")}</p>
+            <label className="mt-3 block text-xs font-medium">
+              {t("productGalleryPresetLabel")}
+              <select
+                name="productGalleryPreset"
+                defaultValue={settings.productGalleryPreset}
+                className="ds-input mt-1 text-sm"
+              >
+                <option value="small">{t("galleryPresetSmall")}</option>
+                <option value="medium">{t("galleryPresetMedium")}</option>
+                <option value="large">{t("galleryPresetLarge")}</option>
+                <option value="custom">{t("galleryPresetCustom")}</option>
+              </select>
+            </label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium">
+                {t("galleryCustomMaxHeight")}
+                <input
+                  name="productGalleryMaxHeightPx"
+                  type="number"
+                  min={100}
+                  max={2000}
+                  placeholder="520"
+                  defaultValue={settings.productGalleryMaxHeightPx ?? ""}
+                  className="ds-input mt-1 text-sm"
+                />
+              </label>
+              <label className="text-xs font-medium">
+                {t("galleryCustomMaxWidth")}
+                <input
+                  name="productGalleryMaxWidthPx"
+                  type="number"
+                  min={100}
+                  max={2000}
+                  placeholder="520"
+                  defaultValue={settings.productGalleryMaxWidthPx ?? ""}
+                  className="ds-input mt-1 text-sm"
+                />
+              </label>
+            </div>
+          </div>
 
           <div className="col-span-full border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-800">תקנון ומדיניות</h3>

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
+import { SubcategoryPillLink } from "@/components/storefront/subcategory-pill-link";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
 
@@ -27,6 +29,8 @@ function sortMainCategories(mains: CategoryItem[]): CategoryItem[] {
 
 export function FeaturedCategories({ categories }: { categories: CategoryItem[] }) {
   const { lang, t, dir } = useStoreI18n();
+  const searchParams = useSearchParams();
+  const selectedCatId = searchParams.get("cat")?.trim() ?? "";
   const scroller = useRef<HTMLDivElement>(null);
   const [openMain, setOpenMain] = useState<string | null>(null);
 
@@ -126,17 +130,19 @@ export function FeaturedCategories({ categories }: { categories: CategoryItem[] 
       </div>
 
       {openMain && (childrenByParent.get(openMain)?.length ?? 0) > 0 && (
-        <div className="mt-3 border-t border-zinc-800/50 pt-3">
-          <p className="mb-2 text-center text-[10px] font-medium uppercase tracking-wider text-zinc-500 sm:text-start">{t("subcategoriesLabel")}</p>
-          <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+        <div className="mt-4 border-t border-zinc-800/50 pt-4">
+          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-zinc-400 sm:text-start">
+            {t("subcategoriesLabel")}
+          </p>
+          <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start sm:gap-3">
             {(childrenByParent.get(openMain) ?? []).map((child) => (
-              <Link
+              <SubcategoryPillLink
                 key={child.id}
                 href={`/products?cat=${encodeURIComponent(child.id)}`}
-                className="rounded-full border border-zinc-700/80 bg-zinc-900/40 px-3 py-1 text-[11px] text-zinc-300 transition hover:border-orange-500/55 hover:text-orange-300"
-              >
-                {pickLocalized(child, "name", lang)}
-              </Link>
+                label={pickLocalized(child, "name", lang)}
+                imageUrl={child.imageUrl}
+                active={selectedCatId === child.id}
+              />
             ))}
           </div>
         </div>

@@ -17,7 +17,7 @@ export default async function ProductsPage({
   const categories = await prisma.category.findMany({
     where: { storeId, active: true },
     orderBy: { sortOrder: "asc" },
-    select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true },
+    select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
   });
   const byId = new Map(categories.map((c) => [c.id, c] as const));
   const selected = cat ? byId.get(cat) : null;
