@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
 import { getAppUrl } from "@/lib/app-url";
 import { clientIpFromRequest, rateLimit } from "@/lib/rate-limit";
+import { queueEmail, sendCustomerWelcomeEmail } from "@/lib/email/email-service";
 import { strongPasswordRegex } from "@/lib/password-strength";
 
 export const runtime = "nodejs";
@@ -133,6 +134,8 @@ export async function POST(req: Request) {
   const verifyUrl = verification
     ? `${appUrl}/api/auth/verify-email?token=${encodeURIComponent(verification.token)}`
     : null;
+
+  queueEmail(() => sendCustomerWelcomeEmail({ name: user.name, email: user.email }));
 
   return NextResponse.json({
     ok: true,

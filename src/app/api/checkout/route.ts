@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DeliveryType, OrderPaymentStatus, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
-import { notifyNewOrderToOwner } from "@/lib/notifications";
+import { notifyNewOrderToOwnerAsync } from "@/lib/notifications";
 import { decodeSessionToken } from "@/lib/auth/session";
 import { cookies } from "next/headers";
 import {
@@ -238,14 +238,7 @@ export async function POST(req: Request) {
   const currency =
     (await prisma.storeSettings.findUnique({ where: { storeId } }))?.currency ?? "ILS";
 
-  void notifyNewOrderToOwner({
-    orderId,
-    orderNumber,
-    customerEmail: body.customerEmail,
-    customerName: body.customerName,
-    total,
-    currency,
-  }).catch(() => {});
+  notifyNewOrderToOwnerAsync(orderId);
 
   return NextResponse.json({
     orderId,

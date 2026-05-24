@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
 
-/** Local asset in /public/hero.png — main homepage hero when no banner image is set. */
-const DEFAULT_HERO_BG = "/hero.png";
+/** Local hero assets in /public — tried in order when primary image fails. */
+const HERO_FALLBACK_CHAIN = [
+  "/hero.png",
+  "/images/desigma-hero-premium.png",
+  "/desigma-hero-fallback.svg",
+] as const;
+
+const DEFAULT_HERO_BG = HERO_FALLBACK_CHAIN[0];
 
 type HeroBanner = {
   id: string;
@@ -23,6 +29,12 @@ type HeroBanner = {
   buttonUrl: string | null;
   imageUrl: string | null;
 };
+
+function resolveHeroImageUrl(imageUrl: string | null | undefined): string {
+  const trimmed = imageUrl?.trim();
+  if (!trimmed) return DEFAULT_HERO_BG;
+  return resolvePublicAssetSrc(trimmed);
+}
 
 export function HeroSlider({ banners }: { banners: HeroBanner[] }) {
   const { lang, t, dir } = useStoreI18n();
@@ -51,6 +63,24 @@ export function HeroSlider({ banners }: { banners: HeroBanner[] }) {
     [banners, t],
   );
   const [idx, setIdx] = useState(0);
+  const [bgSrc, setBgSrc] = useState<string>(DEFAULT_HERO_BG);
+  const [bgLoaded, setBgLoaded] = useState(false);
+
+  const current = slides[idx];
+  const primaryBg = useMemo(() => resolveHeroImageUrl(current.imageUrl), [current.imageUrl]);
+
+  useEffect(() => {
+    setBgSrc(primaryBg);
+    setBgLoaded(false);
+  }, [primaryBg]);
+
+  const onBgError = useCallback(() => {
+    setBgSrc((prev) => {
+      const i = HERO_FALLBACK_CHAIN.indexOf(prev as (typeof HERO_FALLBACK_CHAIN)[number]);
+      const next = i >= 0 && i < HERO_FALLBACK_CHAIN.length - 1 ? HERO_FALLBACK_CHAIN[i + 1] : DEFAULT_HERO_BG;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -59,42 +89,66 @@ export function HeroSlider({ banners }: { banners: HeroBanner[] }) {
     return () => window.clearInterval(id);
   }, [slides.length]);
 
-  const current = slides[idx];
   const title = pickLocalized(current, "title", lang) || t("heroTitle");
   const subtitle = pickLocalized(current, "subtitle", lang);
   const btn = pickLocalized(current, "buttonText", lang) || t("heroCta");
-  const bgSrc = current.imageUrl ? resolvePublicAssetSrc(current.imageUrl) : DEFAULT_HERO_BG;
 
   const overlayGradient = isRtl
-    ? "linear-gradient(to left, rgba(0,0,0,0.75), rgba(0,0,0,0.2))"
-    : "linear-gradient(to right, rgba(0,0,0,0.75), rgba(0,0,0,0.2))";
+    ? "linear-gradient(to left, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.45) 40%, rgba(0,0,0,0.25) 70%, rgba(0,0,0,0.15) 100%)"
+    : "linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.45) 40%, rgba(0,0,0,0.25) 70%, rgba(0,0,0,0.15) 100%)";
 
   const contentAlign =
     "flex h-full w-full max-w-7xl flex-col justify-center px-4 py-12 sm:px-6 md:py-16 max-md:items-center max-md:text-center " +
     (isRtl ? "md:items-end md:text-end" : "md:items-start md:text-start");
 
   return (
-    <section className="relative isolate overflow-hidden" style={{ width: "100%", height: "90vh", minHeight: "22rem" }}>
-      <div
-        className="absolute inset-0 -z-20 transition-all duration-700"
-        style={{
-          backgroundImage: `url("${bgSrc}")`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
-      />
-      <div className="absolute inset-0 -z-10" style={{ background: overlayGradient }} />
+    <section
+      className="relative w-full overflow-hidden"
+      style={{ minHeight: "90vh", height: "max(90vh, 22rem)" }}
+      aria-label="Hero"
+    >
+      {/* Background image layer — positive z-index (never use negative z with stacking contexts) */}
+      <div className="absolute inset-0 z-0 overflow-hidden" aria-hidden>
+        <img
+          key={bgSrc}
+          src={bgSrc}
+          alt=""
+          className={`hero-bg-image h-full w-full object-cover object-center transition-opacity duration-700 ${
+            bgLoaded ? "opacity-100" : "opacity-0"
+          }`}
+          onLoad={() => setBgLoaded(true)}
+          onError={onBgError}
+          fetchPriority="high"
+          decoding="async"
+        />
+      </div>
 
-      <div className="relative z-10 mx-auto flex h-full" dir={dir}>
+      {/* Dark overlay — visible image must show through */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[1] transition-opacity duration-700"
+        style={{ background: overlayGradient }}
+        aria-hidden
+      />
+
+      {/* Subtle glow + vignette */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/50 via-transparent to-orange-500/[0.07]"
+        aria-hidden
+      />
+
+      {/* Floating particles */}
+      <div className="hero-particles pointer-events-none absolute inset-0 z-[2]" aria-hidden />
+
+      {/* Content */}
+      <div className="relative z-10 mx-auto flex h-full min-h-[inherit]" dir={dir}>
         <div key={current.id} className={`${contentAlign} animate-in fade-in duration-700`}>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.35em] text-orange-400/95 sm:text-xs md:mb-3">
             DESIGMA
           </p>
-          <h1 className="max-w-xl text-3xl font-black leading-[1.08] tracking-tight text-white drop-shadow-sm sm:text-4xl md:text-5xl lg:text-6xl">
+          <h1 className="max-w-xl text-3xl font-black leading-[1.08] tracking-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl lg:text-6xl">
             {title}
           </h1>
-          <p className="mt-3 max-w-lg text-sm font-medium text-zinc-200 sm:text-base md:mt-4 md:text-lg">
+          <p className="mt-3 max-w-lg text-sm font-medium text-zinc-200 drop-shadow-md sm:text-base md:mt-4 md:text-lg">
             {subtitle || t("heroSubtitle")}
           </p>
           <Link

@@ -1321,7 +1321,7 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
     // Restore inventory when cancelling a previously active order (best-effort, backward compatible).
     const prev = await prisma.order.findFirst({
       where: { id, storeId },
-      select: { status: true, paymentStatus: true, inventoryReducedAt: true },
+      select: { status: true, paymentStatus: true, fulfillmentStatus: true, inventoryReducedAt: true },
     });
     const nextStatus = status as never;
     const nextPayment = paymentStatus as never;
@@ -1377,10 +1377,51 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
       entityId: id,
       metadata: { status, paymentStatus, fulfillmentStatus: fulfillmentOk ? fulfillmentRaw : undefined },
     });
+
+    const fulfillmentChanged =
+      fulfillmentOk && prev?.fulfillmentStatus !== fulfillmentRaw;
+    const cancelledNow = prev?.status !== "CANCELLED" && status === "CANCELLED";
+    if (cancelledNow || fulfillmentChanged) {
+      const { queueEmail, sendOrderStatusEmail } = await import("@/lib/email/email-service");
+      const statusKey = cancelledNow ? "CANCELLED" : fulfillmentRaw;
+      queueEmail(() => sendOrderStatusEmail(id, statusKey));
+    }
+
     revalidatePath("/admin/orders");
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "עדכון הזמנה נכשל");
+  }
+}
+
+export async function markContactLeadRead(formData: FormData): Promise<AdminActionResult> {
+  try {
+    const { storeId } = await guard();
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return err("Missing id");
+    const updated = await prisma.contactLead.updateMany({
+      where: { id, storeId },
+      data: { isRead: true },
+    });
+    if (updated.count === 0) return err("Lead not found");
+    revalidatePath("/admin/contacts");
+    return ok();
+  } catch (e) {
+    return err(e instanceof Error ? e.message : "Mark read failed");
+  }
+}
+
+export async function deleteContactLead(formData: FormData): Promise<AdminActionResult> {
+  try {
+    const { storeId } = await guard();
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return err("Missing id");
+    const deleted = await prisma.contactLead.deleteMany({ where: { id, storeId } });
+    if (deleted.count === 0) return err("Lead not found");
+    revalidatePath("/admin/contacts");
+    return ok();
+  } catch (e) {
+    return err(e instanceof Error ? e.message : "Delete failed");
   }
 }
 

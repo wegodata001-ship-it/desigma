@@ -8,12 +8,13 @@ import { useCallback, useState } from "react";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
 import { AdminI18nProvider, isRtl, useAdminI18n } from "@/lib/admin-i18n";
 
-const NAV: { href: string; label: string; Icon: React.FC<{ className?: string }> }[] = [
+const NAV: { href: string; label: string; Icon: React.FC<{ className?: string }>; badgeKey?: "contacts" }[] = [
   { href: "/admin", label: "dashboard", Icon: IconDashboard },
   { href: "/admin/products", label: "products", Icon: IconBox },
   { href: "/admin/categories", label: "categories", Icon: IconGrid },
   { href: "/admin/banners", label: "banners", Icon: IconImage },
   { href: "/admin/orders", label: "orders", Icon: IconCart },
+  { href: "/admin/contacts", label: "contacts", Icon: IconMail, badgeKey: "contacts" },
   { href: "/admin/customers", label: "customer", Icon: IconUsers },
   { href: "/admin/delivery", label: "delivery", Icon: IconTruck },
   { href: "/admin/coupons", label: "coupons", Icon: IconTag },
@@ -39,16 +40,23 @@ export function AdminAppShell({
   storeName,
   userName,
   logoPath,
+  unreadContactCount = 0,
   children,
 }: {
   storeName: string;
   userName: string;
   logoPath: string | null;
+  unreadContactCount?: number;
   children: React.ReactNode;
 }) {
   return (
     <AdminI18nProvider>
-      <AdminAppShellInner storeName={storeName} userName={userName} logoPath={logoPath}>
+      <AdminAppShellInner
+        storeName={storeName}
+        userName={userName}
+        logoPath={logoPath}
+        unreadContactCount={unreadContactCount}
+      >
         {children}
       </AdminAppShellInner>
     </AdminI18nProvider>
@@ -59,11 +67,13 @@ function AdminAppShellInner({
   storeName,
   userName,
   logoPath,
+  unreadContactCount,
   children,
 }: {
   storeName: string;
   userName: string;
   logoPath: string | null;
+  unreadContactCount: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "";
@@ -110,8 +120,10 @@ function AdminAppShellInner({
           <span className="truncate text-sm font-semibold tracking-tight">{storeName}</span>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-          {NAV.map(({ href, label, Icon }) => {
+          {NAV.map(({ href, label, Icon, badgeKey }) => {
             const active = navActive(href, pathname);
+            const badge =
+              badgeKey === "contacts" && unreadContactCount > 0 ? unreadContactCount : null;
             return (
               <Link
                 key={href}
@@ -123,7 +135,12 @@ function AdminAppShellInner({
                 }`}
               >
                 <Icon className="h-5 w-5 shrink-0 opacity-90" />
-                <span>{t(label as never)}</span>
+                <span className="flex-1 truncate">{t(label as never)}</span>
+                {badge != null && (
+                  <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -218,6 +235,17 @@ function IconCart({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.591 1.872-5.42 1.872-8.25V6.75A2.25 2.25 0 0018 4.5H6.75a2.25 2.25 0 00-2.25 2.25v5.25c0 .966.784 1.75 1.75 1.75z" />
+    </svg>
+  );
+}
+function IconMail({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25H4.5a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
+      />
     </svg>
   );
 }

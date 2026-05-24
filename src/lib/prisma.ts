@@ -1,3 +1,5 @@
+import "server-only";
+
 import { prismaBase } from "@/lib/prisma-base";
 import { isObservabilityDbEnabled } from "@/lib/observability/config";
 import { recordPrismaQueryObservation } from "@/lib/observability/prisma-metrics";

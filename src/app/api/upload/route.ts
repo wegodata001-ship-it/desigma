@@ -83,10 +83,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ path });
   } catch {
     return NextResponse.json(
-      {
-        error:
-          `Upload failed. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, bucket ${STORAGE_BUCKET}.`,
-      },
+      { error: "Upload failed. Storage is not configured or unavailable." },
       { status: 503 },
     );
   }

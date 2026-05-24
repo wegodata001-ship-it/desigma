@@ -105,7 +105,11 @@ export async function POST(
         httpStatus: 500,
       },
     });
-    return NextResponse.json({ ok: false, message: msg }, { status: 500 });
+    console.error(JSON.stringify({ scope: "webhook", message: "process_failed", error: msg }));
+    return NextResponse.json(
+      { ok: false, message: process.env.NODE_ENV === "development" ? msg : "Internal error" },
+      { status: 500 },
+    );
   }
 
   let finalStatus: PaymentWebhookLogStatus = PaymentWebhookLogStatus.PROCESSED;

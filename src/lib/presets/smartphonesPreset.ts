@@ -31,7 +31,7 @@ async function upsertDemoVariants(prisma: PrismaClient, productId: string, produ
             value: o.value,
             priceAdd: new Prisma.Decimal(o.priceAdd),
             stock: o.stock ?? 10,
-            image: "image" in o ? (o.image ?? null) : null,
+            image: "image" in o && typeof o.image === "string" ? o.image : null,
             isDefault: o.isDefault ?? i === 0,
             sortOrder: o.sortOrder ?? i,
           })),

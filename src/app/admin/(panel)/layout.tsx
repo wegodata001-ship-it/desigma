@@ -6,10 +6,15 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPanelLayout({ children }: { children: React.ReactNode }) {
   const session = await requireAdminSession();
-  const { storeName, userName, logoPath } = await getCachedAdminShellData(session.userId);
+  const { storeName, userName, logoPath, unreadContactCount } = await getCachedAdminShellData(session.userId);
 
   return (
-    <AdminAppShell storeName={storeName} userName={userName} logoPath={logoPath}>
+    <AdminAppShell
+      storeName={storeName}
+      userName={userName}
+      logoPath={logoPath}
+      unreadContactCount={unreadContactCount}
+    >
       {children}
     </AdminAppShell>
   );

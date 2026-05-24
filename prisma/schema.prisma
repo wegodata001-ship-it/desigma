@@ -110,6 +110,7 @@ model Store {
   paymentWebhookLogs  PaymentWebhookLog[]
   emailVerificationTokens EmailVerificationToken[]
   observabilityEvents ObservabilityEvent[]
+  contactLeads        ContactLead[]
 }
 
 /// Production telemetry (errors, slow queries, auth timings, Prisma metrics). Retention enforced in app layer.
@@ -632,4 +633,20 @@ model LoyaltyTransaction {
 
   @@index([storeId])
   @@index([customerId])
+}
+
+model ContactLead {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  email     String?
+  message   String
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
+
+  @@index([storeId])
+  @@index([storeId, isRead])
+  @@index([createdAt])
 }
