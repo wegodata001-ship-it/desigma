@@ -42,6 +42,7 @@ type ProductDetails = {
   oldPrice: number | null;
   discountPercent: number | null;
   stock: number;
+  tags?: string[];
   category: { name_he: string; name_ar: string; name_en: string };
   images: { id: string; url: string }[];
   variantGroups: VariantGroup[];
@@ -111,6 +112,15 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
               הנחה {product.discountPercent}%
             </div>
           ) : null}
+          {(product.tags?.length ?? 0) > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {product.tags!.map((tag) => (
+                <span key={tag} className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-semibold text-orange-200">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           {desc && <p className="mt-6 leading-relaxed text-zinc-300">{desc}</p>}
 
           {(product.variantGroups?.length ?? 0) > 0 && (

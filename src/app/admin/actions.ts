@@ -156,6 +156,25 @@ export async function deleteProduct(formData: FormData): Promise<AdminActionResu
 }
 
 const DELETE_CONFIRM_PHRASE = "DELETE";
+const CATEGORY_DELETE_CONFIRM_PHRASE = "DEKETE";
+
+async function collectCategoryTreeIds(
+  tx: Prisma.TransactionClient,
+  storeId: string,
+  rootId: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  async function walk(categoryId: string) {
+    const children = await tx.category.findMany({
+      where: { storeId, parentId: categoryId },
+      select: { id: true },
+    });
+    for (const child of children) await walk(child.id);
+    ids.push(categoryId);
+  }
+  await walk(rootId);
+  return ids;
+}
 
 export async function deleteAllStoreProducts(
   confirmPhrase: string,
@@ -239,6 +258,11 @@ export async function upsertProduct(formData: FormData): Promise<
     const discountRaw = formData.get("discountPercent") as string;
     const variantGroupsRaw = (formData.get("variantGroups") as string) || "";
     const relatedProductsRaw = (formData.get("relatedProducts") as string) || "";
+    const tagsRaw = (formData.get("tags") as string) || "";
+    const tags = tagsRaw
+      .split(/[,|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     const base = {
       categoryId,
@@ -264,6 +288,7 @@ export async function upsertProduct(formData: FormData): Promise<
       sku,
       active,
       featured: formData.get("featured") === "on",
+      tags,
     };
 
     type VariantOptionInput = {
@@ -701,31 +726,45 @@ export async function upsertCategory(formData: FormData): Promise<AdminActionRes
   }
 }
 
-export async function deleteCategory(formData: FormData): Promise<AdminActionResult> {
+export async function deleteCategory(formData: FormData): Promise<
+  AdminActionResult<{ categoriesDeleted: number; productsDeleted: number }>
+> {
   try {
+    const confirmPhrase = String(formData.get("confirmPhrase") ?? "").trim();
+    if (confirmPhrase !== CATEGORY_DELETE_CONFIRM_PHRASE) {
+      return err("יש להקליד DEKETE בדיוק לאישור המחיקה.");
+    }
     const { storeId, userId } = await guard();
     const id = formData.get("id") as string;
-    const productCount = await prisma.product.count({
-      where: { categoryId: id, storeId },
+    const exists = await prisma.category.findFirst({
+      where: { id, storeId },
+      select: { id: true },
     });
-    if (productCount > 0) {
-      return err("לא ניתן למחוק קטגוריה עם מוצרים.");
-    }
-    const childrenCount = await prisma.category.count({
-      where: { storeId, parentId: id },
+    if (!exists) return err("קטגוריה לא נמצאה");
+
+    const { categoriesDeleted, productsDeleted } = await prisma.$transaction(async (tx) => {
+      const categoryIds = await collectCategoryTreeIds(tx, storeId, id);
+      const productsDeleted = await tx.product.deleteMany({
+        where: { storeId, categoryId: { in: categoryIds } },
+      });
+      const categoriesDeleted = await tx.category.deleteMany({
+        where: { storeId, id: { in: categoryIds } },
+      });
+      return { categoriesDeleted: categoriesDeleted.count, productsDeleted: productsDeleted.count };
     });
-    if (childrenCount > 0) {
-      return err("לא ניתן למחוק קטגוריה עם תתי־קטגוריות. מחק/העבר את תתי־הקטגוריות קודם.");
-    }
-    await prisma.category.deleteMany({ where: { id, storeId } });
+
     await logAdminAction({
       userId,
       action: "category.delete",
       entity: "Category",
       entityId: id,
+      metadata: { categoriesDeleted, productsDeleted },
     });
     revalidatePath("/admin/categories");
-    return ok();
+    revalidatePath("/admin/products");
+    revalidatePath("/products");
+    revalidatePath("/");
+    return ok({ categoriesDeleted, productsDeleted });
   } catch (e) {
     return err(e instanceof Error ? e.message : "מחיקת קטגוריה נכשלה");
   }

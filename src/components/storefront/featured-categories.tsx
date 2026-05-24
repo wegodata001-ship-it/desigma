@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AssetImg } from "@/components/asset-img";
 import { SubcategoryPillLink } from "@/components/storefront/subcategory-pill-link";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
@@ -49,17 +50,17 @@ export function FeaturedCategories({ categories }: { categories: CategoryItem[] 
   const scroll = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: "smooth" });
 
   return (
-    <section id="featured-categories" className="scroll-mt-24">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section id="featured-categories" className="scroll-mt-24 rounded-3xl border border-zinc-800/70 bg-gradient-to-b from-zinc-950/80 to-black/90 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mb-5 flex items-center justify-between gap-3 sm:mb-6">
         <div className="min-w-0 flex-1 text-center sm:flex-none sm:text-start">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-400/85">{t("featuredCategoriesKicker")}</p>
-          <h2 className="mt-0.5 text-base font-bold tracking-tight text-white sm:text-lg">{t("featuredCategoriesTitle")}</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-400/90">{t("featuredCategoriesKicker")}</p>
+          <h2 className="mt-1 text-xl font-bold tracking-tight text-white sm:text-2xl">{t("featuredCategoriesTitle")}</h2>
         </div>
-        <div className="flex shrink-0 gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={() => scroll(dir === "rtl" ? 200 : -200)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700/90 bg-zinc-900/90 text-base leading-none text-zinc-200 shadow-[0_0_16px_-4px_rgba(249,115,22,0.25)] transition hover:border-orange-500/60 hover:text-orange-300 hover:shadow-[0_0_20px_-2px_rgba(249,115,22,0.4)] sm:h-9 sm:w-9 sm:text-lg"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700/90 bg-zinc-900/90 text-lg text-zinc-200 shadow-[0_0_16px_-4px_rgba(249,115,22,0.25)] transition hover:border-orange-500/60 hover:text-orange-300 hover:shadow-[0_0_20px_-2px_rgba(249,115,22,0.4)]"
             aria-label="scroll-prev"
           >
             ‹
@@ -67,7 +68,7 @@ export function FeaturedCategories({ categories }: { categories: CategoryItem[] 
           <button
             type="button"
             onClick={() => scroll(dir === "rtl" ? -200 : 200)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700/90 bg-zinc-900/90 text-base leading-none text-zinc-200 shadow-[0_0_16px_-4px_rgba(249,115,22,0.25)] transition hover:border-orange-500/60 hover:text-orange-300 hover:shadow-[0_0_20px_-2px_rgba(249,115,22,0.4)] sm:h-9 sm:w-9 sm:text-lg"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700/90 bg-zinc-900/90 text-lg text-zinc-200 shadow-[0_0_16px_-4px_rgba(249,115,22,0.25)] transition hover:border-orange-500/60 hover:text-orange-300 hover:shadow-[0_0_20px_-2px_rgba(249,115,22,0.4)]"
             aria-label="scroll-next"
           >
             ›
@@ -77,76 +78,102 @@ export function FeaturedCategories({ categories }: { categories: CategoryItem[] 
 
       <div
         ref={scroller}
-        className="flex justify-center gap-5 overflow-x-auto px-1 py-1 sm:justify-start sm:gap-6 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory justify-start gap-6 overflow-x-auto px-1 py-2 sm:gap-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        dir={dir}
       >
-          {mains.map((c) => {
-            const children = childrenByParent.get(c.id) ?? [];
-            const hasChildren = children.length > 0;
-            const expanded = openMain === c.id;
-            const label = pickLocalized(c, "name", lang);
+        {mains.map((c) => {
+          const children = childrenByParent.get(c.id) ?? [];
+          const hasChildren = children.length > 0;
+          const expanded = openMain === c.id;
+          const active = selectedCatId === c.id || children.some((ch) => ch.id === selectedCatId);
+          const label = pickLocalized(c, "name", lang);
 
-            const item = (
-              <div className="flex w-[76px] shrink-0 flex-col items-center sm:w-[88px]">
-                <div
-                  className={`relative rounded-full p-[2.5px] transition duration-300 ease-out ${
-                    expanded
-                      ? "scale-[1.02] shadow-[0_0_28px_2px_rgba(249,115,22,0.5)]"
-                      : "shadow-[0_0_18px_-2px_rgba(249,115,22,0.35)] group-hover:shadow-[0_0_26px_4px_rgba(249,115,22,0.48)]"
-                  } bg-gradient-to-br from-orange-400/90 via-orange-500/75 to-orange-600/50 group-hover:from-orange-300 group-hover:via-orange-400 group-hover:to-orange-500/70`}
-                >
-                  <div className="h-[64px] w-[64px] overflow-hidden rounded-full bg-zinc-950 ring-1 ring-zinc-800/90 sm:h-[72px] sm:w-[72px]">
-                    <AssetImg
-                      path={c.imageUrl}
-                      alt={label}
-                      className="h-full w-full object-cover transition duration-300 ease-out group-hover:scale-110"
-                    />
-                  </div>
+          const item = (
+            <div className="flex w-[108px] shrink-0 snap-center flex-col items-center sm:w-[128px]">
+              <motion.div
+                className={`relative rounded-full p-[3px] transition-shadow duration-300 ${
+                  expanded || active
+                    ? "bg-gradient-to-br from-orange-300 via-orange-500 to-orange-600 shadow-[0_0_32px_4px_rgba(249,115,22,0.55)]"
+                    : "bg-gradient-to-br from-orange-400/85 via-orange-500/70 to-orange-700/45 shadow-[0_0_22px_-2px_rgba(249,115,22,0.38)] group-hover:shadow-[0_0_30px_2px_rgba(249,115,22,0.5)]"
+                }`}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <div className="h-[100px] w-[100px] overflow-hidden rounded-full bg-zinc-950 ring-2 ring-black/40 sm:h-[120px] sm:w-[120px]">
+                  <AssetImg
+                    path={c.imageUrl}
+                    alt={label}
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-110"
+                  />
                 </div>
-                <p className="mt-2 max-w-[76px] text-center text-[10px] font-medium leading-snug text-zinc-400 transition group-hover:text-zinc-200 sm:max-w-[88px] sm:text-[11px]">
-                  {label}
-                </p>
-                {hasChildren ? (
-                  <span className="mt-0.5 text-[9px] text-orange-400/90">{expanded ? "▲" : "▼"}</span>
-                ) : null}
-              </div>
-            );
+              </motion.div>
+              <p
+                className={`mt-3 max-w-[128px] text-center text-sm font-bold leading-snug transition sm:text-base ${
+                  active ? "text-white" : "text-zinc-300 group-hover:text-white"
+                }`}
+              >
+                {label}
+              </p>
+              {hasChildren ? (
+                <span className="mt-1 text-[11px] font-medium text-orange-400/90">{expanded ? "▲" : "▼"}</span>
+              ) : null}
+            </div>
+          );
 
-            const wrapClass = "group block shrink-0 text-center transition duration-300 hover:-translate-y-0.5";
+          const wrapClass =
+            "group block shrink-0 text-center transition duration-300 hover:-translate-y-1";
 
-            if (!hasChildren) {
-              return (
-                <Link key={c.id} href={`/products?cat=${encodeURIComponent(c.id)}`} className={wrapClass}>
-                  {item}
-                </Link>
-              );
-            }
-
+          if (!hasChildren) {
             return (
-              <button key={c.id} type="button" onClick={() => setOpenMain((prev) => (prev === c.id ? null : c.id))} className={`${wrapClass} cursor-pointer border-0 bg-transparent p-0`}>
+              <Link key={c.id} href={`/products?cat=${encodeURIComponent(c.id)}`} className={wrapClass}>
                 {item}
-              </button>
+              </Link>
             );
-          })}
+          }
+
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setOpenMain((prev) => (prev === c.id ? null : c.id))}
+              className={`${wrapClass} cursor-pointer border-0 bg-transparent p-0`}
+            >
+              {item}
+            </button>
+          );
+        })}
       </div>
 
-      {openMain && (childrenByParent.get(openMain)?.length ?? 0) > 0 && (
-        <div className="mt-4 border-t border-zinc-800/50 pt-4">
-          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-zinc-400 sm:text-start">
-            {t("subcategoriesLabel")}
-          </p>
-          <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start sm:gap-3">
-            {(childrenByParent.get(openMain) ?? []).map((child) => (
-              <SubcategoryPillLink
-                key={child.id}
-                href={`/products?cat=${encodeURIComponent(child.id)}`}
-                label={pickLocalized(child, "name", lang)}
-                imageUrl={child.imageUrl}
-                active={selectedCatId === child.id}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {openMain && (childrenByParent.get(openMain)?.length ?? 0) > 0 ? (
+          <motion.div
+            key={openMain}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.28 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-6 border-t border-zinc-800/60 pt-5">
+              <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-orange-400/85 sm:text-sm">
+                {t("subcategoriesLabel")}
+              </p>
+              <motion.div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-3">
+                {(childrenByParent.get(openMain) ?? []).map((child) => (
+                  <SubcategoryPillLink
+                    key={child.id}
+                    href={`/products?cat=${encodeURIComponent(child.id)}`}
+                    label={pickLocalized(child, "name", lang)}
+                    imageUrl={child.imageUrl}
+                    active={selectedCatId === child.id}
+                    size="lg"
+                  />
+                ))}
+              </motion.div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }

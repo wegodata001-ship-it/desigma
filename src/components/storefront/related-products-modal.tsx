@@ -197,8 +197,8 @@ export function RelatedProductsModal({
         <div className="mt-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 p-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-blue-300">המוצר הראשי</div>
           <div className="mt-2 flex items-center gap-3">
-            <div className="h-12 w-12 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-              <AssetImg path={mainDisplay?.image ?? null} alt={main.title} className="h-full w-full object-cover" />
+            <div className="h-16 w-16 overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
+              <AssetImg path={mainDisplay?.image ?? null} alt={main.title} fit="contain" variant="product" className="h-full w-full" imageClassName="p-1.5" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-white">{main.title}</div>
@@ -226,8 +226,8 @@ export function RelatedProductsModal({
                     : "border-zinc-800 bg-zinc-900/60 hover:border-blue-500/50"
                 }`}
               >
-                <div className="h-12 w-12 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                  <AssetImg path={p.image} alt={name} className="h-full w-full object-cover" />
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
+                  <AssetImg path={p.image} alt={name} fit="contain" variant="product" className="h-full w-full" imageClassName="p-1.5" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-white">{name}</div>

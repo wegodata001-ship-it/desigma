@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AdminModal } from "@/components/admin/admin-modal";
 import { AdminSpinner } from "@/components/admin/admin-spinner";
 
-const PHRASE = "DELETE";
+const DEFAULT_PHRASE = "DELETE";
 
 export function AdminBulkDeleteModal({
   open,
@@ -16,6 +16,7 @@ export function AdminBulkDeleteModal({
   confirmLabel,
   pending,
   onConfirmed,
+  confirmPhrase = DEFAULT_PHRASE,
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,9 +27,10 @@ export function AdminBulkDeleteModal({
   confirmLabel: string;
   pending: boolean;
   onConfirmed: (typedPhrase: string) => Promise<void>;
+  confirmPhrase?: string;
 }) {
   const [phrase, setPhrase] = useState("");
-  const okPhrase = phrase.trim() === PHRASE;
+  const okPhrase = phrase.trim() === confirmPhrase;
 
   useEffect(() => {
     if (!open) setPhrase("");
@@ -45,7 +47,7 @@ export function AdminBulkDeleteModal({
             autoComplete="off"
             value={phrase}
             onChange={(e) => setPhrase(e.target.value)}
-            placeholder={PHRASE}
+            placeholder={confirmPhrase}
             disabled={pending}
             className="mt-1 w-full rounded-lg border border-red-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-[0_0_0_1px_rgba(239,68,68,0.15)] placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/25"
           />

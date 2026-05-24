@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { AssetImg } from "@/components/asset-img";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
 import { lockBodyScroll } from "@/lib/modal-scroll-lock";
-import { storefrontGalleryImageClass } from "@/lib/product-media-fit";
 
 function GalleryMainFrame({
   title,
@@ -62,7 +61,7 @@ function GalleryMainFrame({
         onMouseEnter={() => setHoverZoom(true)}
         onMouseLeave={() => setHoverZoom(false)}
       >
-        <AssetImg path={currentUrl} alt={title} className={storefrontGalleryImageClass("contain")} />
+        <AssetImg path={currentUrl} alt={title} fit="contain" variant="product" className="h-full w-full" imageClassName="p-2 md:p-4" />
       </div>
       {safeLength > 1 && (
         <>
@@ -179,7 +178,10 @@ export function ProductGallery({
               <AssetImg
                 path={img.url}
                 alt={title}
-                className="h-full w-full object-cover transition group-hover/thumb:scale-105"
+                fit="contain"
+                variant="product"
+                className="h-full w-full"
+                imageClassName="p-1 transition group-hover/thumb:scale-105"
               />
             </button>
           ))}
@@ -228,7 +230,7 @@ export function ProductGallery({
                       <img
                         src={resolvePublicAssetSrc(img.url)}
                         alt=""
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain object-center p-1"
                       />
                     </button>
                   ))}

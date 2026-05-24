@@ -24,6 +24,7 @@ const productListSelect = {
   stock: true,
   active: true,
   featured: true,
+  tags: true,
   categoryId: true,
   category: { select: { name_he: true } },
   images: {
@@ -146,6 +147,7 @@ export default async function AdminProductsPage({
         stock: p.stock,
         active: p.active,
         featured: p.featured,
+        tags: p.tags ?? [],
         categoryId: p.categoryId,
         category: { name_he: p.category.name_he },
         images: p.images.map((im) => ({

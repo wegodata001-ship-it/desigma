@@ -31,6 +31,7 @@ export function CategoriesAdminClient({ categories }: { categories: CategoryRow[
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<CategoryRow | null>(null);
   const [delId, setDelId] = useState<string | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState(false);
   const [presetParentId, setPresetParentId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -97,6 +98,36 @@ export function CategoriesAdminClient({ categories }: { categories: CategoryRow[
       </div>
 
       <AdminBulkDeleteModal
+        open={!!delId}
+        onClose={() => !deletingCategory && setDelId(null)}
+        title={t("deleteCategoryTitle")}
+        description={t("deleteCategoryWarning")}
+        typeDeleteHint={t("typeDeketeToConfirm")}
+        cancelLabel={t("cancel")}
+        confirmLabel={t("delete")}
+        confirmPhrase="DEKETE"
+        pending={deletingCategory}
+        onConfirmed={async (phrase) => {
+          if (!delId) return;
+          setDeletingCategory(true);
+          try {
+            const fd = new FormData();
+            fd.append("id", delId);
+            fd.append("confirmPhrase", phrase);
+            const res = await deleteCategory(fd);
+            if (!res.ok) setToast(res.error);
+            else {
+              setDelId(null);
+              setToast(t("categoryDeletedToast"));
+              refresh();
+            }
+          } finally {
+            setDeletingCategory(false);
+          }
+        }}
+      />
+
+      <AdminBulkDeleteModal
         open={bulkDeleteOpen}
         onClose={() => !bulkDeleting && setBulkDeleteOpen(false)}
         title={t("bulkDeleteCategoriesTitle")}
@@ -157,39 +188,6 @@ export function CategoriesAdminClient({ categories }: { categories: CategoryRow[
             onCancel={() => setEdit(null)}
           />
         )}
-      </AdminModal>
-
-      <AdminModal
-        open={!!delId}
-        onClose={() => setDelId(null)}
-        title={t("delete")}
-        footer={
-          <div className="flex justify-end gap-2">
-            <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={() => setDelId(null)}>
-              {t("cancel")}
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white"
-              onClick={async () => {
-                if (!delId) return;
-                const fd = new FormData();
-                fd.append("id", delId);
-                const res = await deleteCategory(fd);
-                if (!res.ok) setToast(res.error);
-                else {
-                  setDelId(null);
-                  setToast("נמחק");
-                  refresh();
-                }
-              }}
-            >
-              {t("delete")}
-            </button>
-          </div>
-        }
-      >
-        <p className="text-sm text-slate-600">{t("confirmDeleteCategory")}</p>
       </AdminModal>
     </div>
   );

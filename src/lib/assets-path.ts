@@ -24,6 +24,8 @@ export function resolvePublicAssetSrc(path: string): string {
   const p = path.trim();
   if (p.startsWith("http://") || p.startsWith("https://")) return p;
   if (p.startsWith("/")) return p;
+  // Bundled static assets in public/ (not Supabase storage)
+  if (p.startsWith("demo/") || p.startsWith("products/")) return `/${p}`;
   return publicStorageUrl(p);
 }
 

@@ -131,6 +131,11 @@ export const translations: Record<AdminLang, Record<string, string>> = {
     noOrders: "No orders yet",
     confirmDeleteProduct: "Delete this product permanently?",
     confirmDeleteCategory: "Delete this category?",
+    deleteCategoryTitle: "Delete category",
+    deleteCategoryWarning:
+      "This will permanently delete the category, all subcategories, and all products inside them.",
+    typeDeketeToConfirm: "Type DEKETE to confirm",
+    categoryDeletedToast: "Category deleted",
     confirmDeleteOption: "Delete this delivery option?",
 
     // Forms
@@ -485,6 +490,11 @@ export const translations: Record<AdminLang, Record<string, string>> = {
     noOrders: "אין הזמנות עדיין",
     confirmDeleteProduct: "למחוק מוצר זה לצמיתות?",
     confirmDeleteCategory: "למחוק קטגוריה זו?",
+    deleteCategoryTitle: "מחיקת קטגוריה",
+    deleteCategoryWarning:
+      "פעולה זו תמחק לצמיתות את הקטגוריה, את כל תתי־הקטגוריות ואת כל המוצרים שבתוכן.",
+    typeDeketeToConfirm: "הקלידו DEKETE לאישור",
+    categoryDeletedToast: "הקטגוריה נמחקה",
     confirmDeleteOption: "למחוק אפשרות משלוח זו?",
 
     // Forms
@@ -836,6 +846,11 @@ export const translations: Record<AdminLang, Record<string, string>> = {
     noOrders: "لا توجد طلبات بعد",
     confirmDeleteProduct: "هل تريد حذف هذا المنتج نهائيًا؟",
     confirmDeleteCategory: "هل تريد حذف هذا التصنيف؟",
+    deleteCategoryTitle: "حذف التصنيف",
+    deleteCategoryWarning:
+      "سيؤدي هذا إلى حذف التصنيف وجميع التصنيفات الفرعية والمنتجات بداخلها نهائيًا.",
+    typeDeketeToConfirm: "اكتب DEKETE للتأكيد",
+    categoryDeletedToast: "تم حذف التصنيف",
     confirmDeleteOption: "هل تريد حذف خيار التوصيل هذا؟",
 
     // Forms

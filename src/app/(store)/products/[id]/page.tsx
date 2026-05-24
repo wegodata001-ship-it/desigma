@@ -47,6 +47,7 @@ export default async function ProductPage({
         oldPrice: product.oldPrice ? Number(product.oldPrice) : null,
         discountPercent: product.discountPercent ?? null,
         stock: product.stock,
+        tags: product.tags ?? [],
         category: {
           name_he: product.category.name_he,
           name_ar: product.category.name_ar,

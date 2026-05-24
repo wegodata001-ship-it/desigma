@@ -16,6 +16,10 @@ import {
   upsertProduct,
 } from "@/app/admin/actions";
 import { AdminBulkDeleteModal } from "@/components/admin/admin-bulk-delete-modal";
+import {
+  adminVariantGroupsFromPreset,
+  PRODUCT_TAGS,
+} from "@/lib/smartphone-catalog";
 
 type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 type VariantOption = {
@@ -45,6 +49,7 @@ export type ProductRow = {
   stock: number;
   active: boolean;
   featured: boolean;
+  tags?: string[];
   categoryId: string;
   category: { name_he: string };
   images: Img[];
@@ -561,6 +566,22 @@ function ProductForm({
         <input type="checkbox" name="featured" defaultChecked={product?.featured ?? false} value="on" />
         {t("productFeatured")}
       </label>
+      <label className="text-xs font-medium text-slate-700">
+        תגיות מוצר (New, Sale, Best Seller…)
+        <input
+          name="tags"
+          defaultValue={(product?.tags ?? []).join(", ")}
+          placeholder="NEW, SALE, BEST SELLER"
+          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        />
+      </label>
+      <div className="flex flex-wrap gap-1">
+        {PRODUCT_TAGS.map((tag) => (
+          <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+            {tag}
+          </span>
+        ))}
+      </div>
 
       <ProductImagesSection
         product={product ? { id: product.id, images: product.images } : null}
@@ -576,23 +597,39 @@ function ProductForm({
             <div className="text-sm font-semibold text-slate-900">אפשרויות מוצר</div>
             <div className="mt-0.5 text-xs text-slate-500">קבוצות דינמיות (צבע, נפח, RAM ועוד) עם תוספת מחיר לכל אפשרות.</div>
           </div>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
-            onClick={() =>
-              setVariantGroups((prev) => [
-                ...prev,
-                {
-                  id: `new-group-${Date.now()}`,
-                  name: "",
-                  sortOrder: prev.length,
-                  options: [],
-                },
-              ])
-            }
-          >
-            + הוסף קבוצת אפשרויות
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900 hover:bg-blue-100"
+              onClick={() => setVariantGroups(adminVariantGroupsFromPreset("apple"))}
+            >
+              📱 תבנית Apple
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900 hover:bg-violet-100"
+              onClick={() => setVariantGroups(adminVariantGroupsFromPreset("samsung"))}
+            >
+              📱 תבנית Samsung
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+              onClick={() =>
+                setVariantGroups((prev) => [
+                  ...prev,
+                  {
+                    id: `new-group-${Date.now()}`,
+                    name: "",
+                    sortOrder: prev.length,
+                    options: [],
+                  },
+                ])
+              }
+            >
+              + הוסף קבוצת אפשרויות
+            </button>
+          </div>
         </div>
 
         {variantGroups.length === 0 ? (

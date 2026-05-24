@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed-smartphones": "tsx scripts/seed-smartphones.ts",
+    "demo:smartphone-images": "python scripts/generate-smartphone-images.py",
+    "demo:product-images": "python scripts/generate-product-png-images.py",
     "db:sync-admin-password": "tsx scripts/sync-admin-password.ts",
     "postinstall": "prisma generate"
   },

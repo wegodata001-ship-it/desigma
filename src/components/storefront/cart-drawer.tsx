@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AssetImg } from "@/components/asset-img";
+import { ProductImage } from "@/components/asset-img";
 import { useCart } from "@/components/cart-context";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
@@ -74,8 +74,8 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             return (
               <div key={line.key} className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3">
                 <div className="flex gap-3">
-                  <div className="h-16 w-16 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-                    <AssetImg path={p.image} alt={name} className="h-full w-full object-cover" />
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
+                    <ProductImage path={p.image} alt={name} className="h-full w-full" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{name}</p>

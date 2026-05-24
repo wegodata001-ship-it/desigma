@@ -297,6 +297,8 @@ model Product {
   discountPercent  Int?
   stock            Int      @default(0)
   sku              String
+  /// Product badges e.g. New, Sale, Best Seller (storefront filters + cards).
+  tags             String[] @default([])
   active           Boolean  @default(true)
   featured         Boolean  @default(false)
   createdAt        DateTime @default(now())
