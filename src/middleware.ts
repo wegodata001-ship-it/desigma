@@ -9,6 +9,7 @@ import {
   isLikelyOrderId,
   isStorefrontHostname,
 } from "@/lib/app-urls-shared";
+import { resolveEffectiveStoreId } from "@/lib/store-resolve";
 
 function forbidden(message = "403 Unauthorized") {
   return new NextResponse(message, {
@@ -25,6 +26,9 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
   const requestHost = req.nextUrl.host;
+
+  const storeId = resolveEffectiveStoreId({ host: requestHost });
+  requestHeaders.set("x-store-id", storeId);
 
   const onAdminPortal = isAdminPortalHostname(requestHost);
   const onStorefront = isStorefrontHostname(requestHost);

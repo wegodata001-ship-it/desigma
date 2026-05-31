@@ -54,17 +54,19 @@ function typeLabel(type: DeliveryType, t: (k: string) => string): string {
 }
 
 export function DeliveryAdminClient({
+  storeId,
   pickupEnabled,
   options,
   settingsContext = false,
 }: {
+  storeId: string;
   pickupEnabled: boolean;
   options: DeliveryRow[];
   settingsContext?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<DeliveryRow | null>(null);
   const [delId, setDelId] = useState<string | null>(null);
@@ -72,21 +74,43 @@ export function DeliveryAdminClient({
 
   const refresh = () => startTransition(() => router.refresh());
 
+  const openAddModal = () => {
+    console.log("Current Store", storeId);
+    setOpen(true);
+  };
+
   async function submitDelivery(form: HTMLFormElement) {
     const fd = new FormData(form);
+    const name = String(fd.get("name_he") ?? "").trim();
+    const type = String(fd.get("type") ?? "");
+    const price = Number(fd.get("price") ?? 0);
+    console.log("Saving shipping option", { storeId, name, type, price });
+
     const res = await upsertDelivery(fd);
-    if (!res.ok) setToast(res.error);
-    else {
-      setToast(t("savedSuccessfully"));
-      setOpen(false);
-      setEdit(null);
-      refresh();
+    if (!res.ok) {
+      console.error("[DeliveryAdminClient] save failed", res.error);
+      setToast({ kind: "error", message: res.error });
+      return;
     }
+    setToast({ kind: "success", message: t("savedSuccessfully") });
+    setOpen(false);
+    setEdit(null);
+    refresh();
   }
 
   return (
     <div>
-      {toast && <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm">{toast}</div>}
+      {toast && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-2 text-sm ${
+            toast.kind === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-red-200 bg-red-50 text-red-900"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -110,9 +134,9 @@ export function DeliveryAdminClient({
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
             const res = await savePickupEnabled(fd);
-            if (!res.ok) setToast(res.error);
+            if (!res.ok) setToast({ kind: "error", message: res.error });
             else {
-              setToast(t("savedSuccessfully"));
+              setToast({ kind: "success", message: t("savedSuccessfully") });
               refresh();
             }
           }}
@@ -130,7 +154,7 @@ export function DeliveryAdminClient({
       <section className="mt-8">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">{t("shippingOptions")}</h2>
-          <button type="button" onClick={() => setOpen(true)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white">
+          <button type="button" onClick={openAddModal} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white">
             {t("addOption")}
           </button>
         </div>
@@ -218,10 +242,10 @@ export function DeliveryAdminClient({
                 const fd = new FormData();
                 fd.append("id", delId);
                 const res = await deleteDeliveryOption(fd);
-                if (!res.ok) setToast(res.error);
+                if (!res.ok) setToast({ kind: "error", message: res.error });
                 else {
                   setDelId(null);
-                  setToast(t("deletedSuccessfully"));
+                  setToast({ kind: "success", message: t("deletedSuccessfully") });
                   refresh();
                 }
               }}

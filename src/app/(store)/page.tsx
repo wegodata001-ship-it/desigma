@@ -76,8 +76,10 @@ async function loadHomeData(storeId: string): Promise<HomeLoaded> {
 }
 
 export default async function HomePage() {
-  const { storeId } = getStore();
+  const { storeId } = await getStore();
   const { banners, categories, products } = await loadHomeData(storeId);
+
+  console.log("[homepage] storeId=", storeId, "productsLoaded=", products.length);
 
   const heroBanner = banners.find((b) => b.isHero) ?? null;
   const nonHeroBanners = banners.filter((b) => !b.isHero);

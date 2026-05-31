@@ -8,7 +8,7 @@ import { logServerComponentError } from "@/lib/runtime-log/server";
 import { getRequestPath } from "@/lib/server/request-path";
 
 export async function SiteHeader() {
-  const ctx = getStore();
+  const ctx = await getStore();
   const title = getSiteName();
   let path = "unknown";
 

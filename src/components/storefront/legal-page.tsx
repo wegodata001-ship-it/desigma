@@ -11,7 +11,7 @@ export const revalidate = 0;
 
 export async function LegalPage({ tab }: { tab: PolicyTab }) {
   const meta = LEGAL_PAGES[tab];
-  const ctx = getStore();
+  const ctx = await getStore();
   let path = meta.path;
 
   let htmlByLang = { he: null as string | null, ar: null as string | null, en: null as string | null };

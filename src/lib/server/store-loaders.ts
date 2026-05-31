@@ -9,6 +9,7 @@ import { logDbFailure, logLoaderOk } from "@/lib/server/db-log";
 import { getRequestPath } from "@/lib/server/request-path";
 import { safeQuery } from "@/lib/server/safe-query";
 import { SITE_NAME, STORE_ID, STORE_SLUG } from "@/lib/store";
+import { getRequestStoreContext } from "@/lib/store-request";
 
 export type StoreContext = {
   storeId: string;
@@ -45,8 +46,16 @@ const FOOTER_LINKS: FooterData["legalLinks"] = [
   { href: "/shipping", labelKey: "shippingPolicy" },
 ];
 
-/** Store identity — sync, never throws. */
-export function getStore(): StoreContext {
+/** Store identity for current request — never uses storeId "base" on DESIGMA hosts. */
+export async function getStore(): Promise<StoreContext> {
+  const ctx = await getRequestStoreContext();
+  console.log("STORE", ctx.storeId);
+  console.log("STORE SLUG", ctx.storeSlug);
+  return ctx;
+}
+
+/** Sync fallback (build-time env only). Prefer `getStore()` in server components. */
+export function getStoreSync(): StoreContext {
   return {
     storeId: STORE_ID,
     storeSlug: STORE_SLUG,
@@ -58,7 +67,7 @@ export function getStore(): StoreContext {
 export const getStoreContext = getStore;
 
 export async function getStoreSettings(): Promise<StoreSettingsPublic> {
-  const ctx = getStore();
+  const ctx = await getStore();
   let path = "unknown";
   try {
     path = await getRequestPath();
@@ -91,7 +100,7 @@ export async function getStoreSettings(): Promise<StoreSettingsPublic> {
 }
 
 export async function getCategories(selectImage = false): Promise<CategoryNavItem[]> {
-  const ctx = getStore();
+  const ctx = await getStore();
   let path = "unknown";
   try {
     path = await getRequestPath();
@@ -134,7 +143,7 @@ export async function getNavigation(): Promise<CategoryNavItem[]> {
 
 /** Footer is static links + optional settings contact — no DB required for links. */
 export async function getFooterData(): Promise<FooterData> {
-  const ctx = getStore();
+  const ctx = await getStore();
   const settings = await getStoreSettings();
 
   logLoaderOk("getFooterData", { ...ctx, hasSettings: Boolean(settings) });
@@ -205,7 +214,7 @@ const LEGAL_SELECT: Record<
 };
 
 export async function loadLegalPageFromDb(tab: PolicyTab): Promise<LegalPageLoadResult> {
-  const ctx = getStore();
+  const ctx = await getStore();
   let path = "unknown";
   try {
     path = await getRequestPath();
@@ -328,7 +337,7 @@ export async function loadAllLegalPagesFromDb(): Promise<AllLegalPagesData> {
   }
 
   logLoaderOk("loadAllLegalPagesFromDb", {
-    ...getStore(),
+    ...(await getStore()),
     tabs: tabs.length,
   });
 

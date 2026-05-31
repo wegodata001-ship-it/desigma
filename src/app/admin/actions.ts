@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
+import { getRequestStoreId } from "@/lib/store-request";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { assertAssetPath, assertBannerImagePath } from "@/lib/assets-path";
 import { logAdminAction } from "@/lib/admin-audit";
@@ -28,7 +29,8 @@ import {
 
 async function guard() {
   const session = await requireAdminSession();
-  return { storeId: STORE_ID, userId: session.userId };
+  const storeId = await getRequestStoreId();
+  return { storeId, userId: session.userId };
 }
 
 export type AdminOrderDetailDTO = {
@@ -922,7 +924,7 @@ export async function deleteBanner(formData: FormData): Promise<AdminActionResul
 export async function upsertDelivery(formData: FormData): Promise<AdminActionResult> {
   try {
     const { storeId, userId } = await guard();
-    const id = (formData.get("id") as string) || "";
+    const id = String(formData.get("id") ?? "").trim();
     const type = formData.get("type") as
       | "PICKUP"
       | "SHIPPING"
@@ -946,11 +948,28 @@ export async function upsertDelivery(formData: FormData): Promise<AdminActionRes
       active: formData.get("active") === "on",
       sortOrder: Number(formData.get("sortOrder") || 0),
     };
+
+    console.log("Saving shipping option", {
+      storeId,
+      id: id || "(new)",
+      name: common.name_he,
+      type: common.type,
+      price: Number(common.price),
+    });
+
     if (id) {
-      await prisma.deliveryOption.updateMany({ where: { id, storeId }, data: common });
+      const updated = await prisma.deliveryOption.updateMany({
+        where: { id, storeId },
+        data: common,
+      });
+      if (updated.count === 0) {
+        console.error("[upsertDelivery] update matched 0 rows", { id, storeId });
+        return err("אפשרות משלוח לא נמצאה לחנות הנוכחית");
+      }
       await logAdminAction({ userId, action: "delivery.update", entity: "DeliveryOption", entityId: id });
     } else {
       const d = await prisma.deliveryOption.create({ data: { ...common, storeId } });
+      console.log("[upsertDelivery] created", { id: d.id, storeId: d.storeId });
       await logAdminAction({
         userId,
         action: "delivery.create",
@@ -962,7 +981,12 @@ export async function upsertDelivery(formData: FormData): Promise<AdminActionRes
     revalidatePath("/admin/settings/shipping");
     return ok();
   } catch (e) {
-    return err(e instanceof Error ? e.message : "שמירת משלוח נכשלה");
+    const msg = e instanceof Error ? e.message : "שמירת משלוח נכשלה";
+    console.error("[upsertDelivery] failed", e);
+    if (/max clients reached|EMAXCONNSESSION/i.test(msg)) {
+      return err("מסד הנתונים עמוס (Session Pooler). עדכן DATABASE_URL לפורט 6543 ב-Vercel.");
+    }
+    return err(msg);
   }
 }
 

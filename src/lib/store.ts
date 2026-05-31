@@ -12,7 +12,10 @@ const getPublicEnv = (key: string, fallback: string) => {
   return trimmed.length > 0 ? trimmed : fallback;
 };
 
-export const STORE_ID = getPublicEnv("NEXT_PUBLIC_STORE_ID", "desigma");
+export const STORE_ID = (() => {
+  const raw = getPublicEnv("NEXT_PUBLIC_STORE_ID", "desigma");
+  return raw === "base" ? "desigma" : raw;
+})();
 export const STORE_SLUG = getPublicEnv("NEXT_PUBLIC_STORE_SLUG", STORE_ID);
 
 const ASSETS_FOLDER_RAW = getPublicEnv("NEXT_PUBLIC_ASSETS_FOLDER", STORE_SLUG);

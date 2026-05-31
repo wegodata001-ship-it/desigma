@@ -17,6 +17,8 @@
     "qa:order-email-links": "tsx scripts/qa-order-email-links.ts",
     "db:check": "tsx scripts/check-db-data.ts",
     "db:audit": "tsx scripts/audit-prisma.ts",
+    "store:audit": "tsx scripts/store-isolation-audit.ts",
+    "store:migrate-base-to-desigma": "tsx scripts/migrate-base-to-desigma.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
