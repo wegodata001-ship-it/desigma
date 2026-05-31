@@ -47,7 +47,7 @@ type CartContextValue = {
 const CartContext = createContext<CartContextValue | null>(null);
 
 function storageKey() {
-  const id = process.env.NEXT_PUBLIC_STORE_ID ?? "store";
+  const id = process.env.NEXT_PUBLIC_STORE_ID ?? "desigma";
   return `cart:${id}`;
 }
 

@@ -4,7 +4,10 @@ import { isAuthDebugLogsEnabled, SESSION_COOKIE_NAME } from "@/lib/auth/cookie-c
 import {
   hostFromUrl,
   hostsMatch,
+  isAdminPortalHostname,
+  isAdminPortalPath,
   isLikelyOrderId,
+  isStorefrontHostname,
 } from "@/lib/app-urls-shared";
 
 function forbidden(message = "403 Unauthorized") {
@@ -12,16 +15,6 @@ function forbidden(message = "403 Unauthorized") {
     status: 403,
     headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
-}
-
-function resolveHosts() {
-  const storeHost = hostFromUrl(process.env.NEXT_PUBLIC_STORE_URL);
-  const adminHost = hostFromUrl(process.env.NEXT_PUBLIC_ADMIN_URL);
-  const appHost = hostFromUrl(process.env.NEXT_PUBLIC_APP_URL);
-  return {
-    storeHost: storeHost ?? appHost,
-    adminHost: adminHost ?? appHost,
-  };
 }
 
 export async function middleware(req: NextRequest) {
@@ -32,38 +25,31 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
   const requestHost = req.nextUrl.host;
-  const { storeHost, adminHost } = resolveHosts();
 
-  const onAdminPortal =
-    (adminHost && hostsMatch(requestHost, adminHost)) ||
-    (adminHost && storeHost && hostsMatch(adminHost, storeHost) && pathname.startsWith("/admin"));
-  const onStorefront = storeHost && hostsMatch(requestHost, storeHost);
-  const splitDomains = adminHost && storeHost && !hostsMatch(adminHost, storeHost);
+  const onAdminPortal = isAdminPortalHostname(requestHost);
+  const onStorefront = isStorefrontHostname(requestHost);
+  const storeHost = hostFromUrl(process.env.NEXT_PUBLIC_STORE_URL);
+  const adminHost = hostFromUrl(process.env.NEXT_PUBLIC_ADMIN_URL);
+  const splitDomains = !!(storeHost && adminHost && !hostsMatch(storeHost, adminHost));
 
-  if (splitDomains) {
-    if (pathname.startsWith("/admin") || pathname === "/login-admin") {
-      if (onStorefront && !onAdminPortal) {
-        return forbidden();
-      }
+  // portal.desigma-shop.com → admin only (redirect any storefront page to /admin)
+  if (onAdminPortal && !isAdminPortalPath(pathname)) {
+    if (pathname === "/login" || pathname.startsWith("/login/")) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/login-admin";
+      url.search = "";
+      return NextResponse.redirect(url);
     }
-    if (onAdminPortal && !pathname.startsWith("/admin") && !pathname.startsWith("/api") && !pathname.startsWith("/login-admin") && !pathname.startsWith("/_next")) {
-      const isStoreOnly =
-        pathname === "/" ||
-        pathname.startsWith("/products") ||
-        pathname.startsWith("/cart") ||
-        pathname.startsWith("/checkout") ||
-        pathname.startsWith("/account") ||
-        pathname.startsWith("/terms") ||
-        pathname.startsWith("/privacy") ||
-        pathname.startsWith("/refunds") ||
-        pathname.startsWith("/shipping") ||
-        pathname.startsWith("/legal") ||
-        pathname.startsWith("/contact") ||
-        pathname.startsWith("/login") ||
-        pathname.startsWith("/register");
-      if (isStoreOnly) {
-        return forbidden();
-      }
+    const url = req.nextUrl.clone();
+    url.pathname = "/admin";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  // desigma-shop.com → no admin routes
+  if (splitDomains && onStorefront && !onAdminPortal) {
+    if (pathname.startsWith("/admin") || pathname === "/login-admin") {
+      return forbidden();
     }
   }
 
@@ -72,7 +58,7 @@ export async function middleware(req: NextRequest) {
     const slug = decodeURIComponent(orderMatch[1]);
     const adminRoute = isLikelyOrderId(slug) || onAdminPortal;
 
-    if (onStorefront && splitDomains && isLikelyOrderId(slug)) {
+    if (onStorefront && !onAdminPortal && isLikelyOrderId(slug)) {
       return forbidden();
     }
 

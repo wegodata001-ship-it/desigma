@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getStore } from "@/lib/server/store-loaders";
 import { safeAllSettled } from "@/lib/server/safe-all-settled";
+import { safeQuery } from "@/lib/server/safe-query";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +29,31 @@ type HomeLoaded = {
   >;
 };
 
+async function loadHomeProducts(storeId: string) {
+  return safeQuery(
+    "store.home.products",
+    () =>
+      prisma.product.findMany({
+        where: { storeId, active: true },
+        take: 60,
+        include: {
+          category: { select: { id: true, parentId: true, name_en: true } },
+          images: { orderBy: { sortOrder: "asc" }, take: 1 },
+        },
+        orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+      }),
+    [],
+    { timeoutMs: 25_000 },
+  );
+}
+
 async function loadHomeData(storeId: string): Promise<HomeLoaded> {
   const empty: HomeLoaded = { banners: [], categories: [], products: [] };
 
-  return safeAllSettled(
+  // Load products first (sequential) — avoids pool exhaustion from 3 parallel queries on Supabase session pooler.
+  const products = await loadHomeProducts(storeId);
+
+  const rest = await safeAllSettled(
     "store.home",
     {
       banners: () =>
@@ -45,20 +67,12 @@ async function loadHomeData(storeId: string): Promise<HomeLoaded> {
           orderBy: { sortOrder: "asc" },
           select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
         }),
-      products: () =>
-        prisma.product.findMany({
-          where: { storeId, active: true },
-          take: 60,
-          include: {
-            category: { select: { id: true, parentId: true, name_en: true } },
-            images: { orderBy: { sortOrder: "asc" }, take: 1 },
-          },
-          orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-        }),
     },
-    empty,
+    { banners: [], categories: [] },
     { storeId },
   );
+
+  return { ...rest, products };
 }
 
 export default async function HomePage() {
@@ -71,6 +85,7 @@ export default async function HomePage() {
   const bestSellers = [...products]
     .sort((a, b) => b.stock - a.stock)
     .slice(0, 10);
+  const catalogFallback = products.slice(0, 8);
   const childIdsByParent = new Map<string, string[]>();
   for (const category of categories) {
     if (!category.parentId) continue;
@@ -95,6 +110,8 @@ export default async function HomePage() {
   const airConditionerDeals = products.filter((p) => airConditionerIds.has(p.categoryId)).slice(0, 8);
   const newArrivals = [...products].sort((a, b) => +b.createdAt - +a.createdAt).slice(0, 8);
 
+  const withFallback = (list: typeof products) => (list.length > 0 ? list : catalogFallback);
+
   const toCard = (p: (typeof products)[number]) => ({
     id: p.id,
     name_he: p.name_he,
@@ -115,14 +132,14 @@ export default async function HomePage() {
       banners={heroBanner ? [heroBanner] : []}
       promoBanners={nonHeroBanners}
       categories={categories}
-      featured={featured.map(toCard)}
-      bestSellers={bestSellers.map(toCard)}
-      gamingCollection={gamingCollection.map(toCard)}
-      laptopDeals={laptopDeals.map(toCard)}
-      audioCollection={audioCollection.map(toCard)}
-      smartHome={smartHome.map(toCard)}
-      airConditionerDeals={airConditionerDeals.map(toCard)}
-      newArrivals={newArrivals.map(toCard)}
+      featured={(featured.length > 0 ? featured : catalogFallback).map(toCard)}
+      bestSellers={(bestSellers.length > 0 ? bestSellers : catalogFallback).map(toCard)}
+      gamingCollection={withFallback(gamingCollection).map(toCard)}
+      laptopDeals={withFallback(laptopDeals).map(toCard)}
+      audioCollection={withFallback(audioCollection).map(toCard)}
+      smartHome={withFallback(smartHome).map(toCard)}
+      airConditionerDeals={withFallback(airConditionerDeals).map(toCard)}
+      newArrivals={(newArrivals.length > 0 ? newArrivals : catalogFallback).map(toCard)}
     />
   );
 }
