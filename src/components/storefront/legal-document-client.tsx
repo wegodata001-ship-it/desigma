@@ -74,7 +74,7 @@ export function LegalDocumentClient({
 
   return (
     <section dir={dir} className="legal-page-shell border-t border-zinc-800/80 bg-zinc-950">
-      <div className="legal-document scroll-smooth mx-auto w-full max-w-[1000px] px-4 py-12 md:px-8 md:py-16">
+      <div className="legal-document scroll-smooth mx-auto w-full max-w-[1100px] px-4 py-12 md:px-8 md:py-16">
         <header className="legal-document__header">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-500">DESIGMA</p>
           <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl">

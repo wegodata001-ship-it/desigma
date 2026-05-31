@@ -38,6 +38,7 @@ export type FooterData = {
 };
 
 const FOOTER_LINKS: FooterData["legalLinks"] = [
+  { href: "/legal", labelKey: "legalHubLink" },
   { href: "/terms", labelKey: "termsOfUse" },
   { href: "/privacy", labelKey: "privacyPolicy" },
   { href: "/refunds", labelKey: "refundPolicy" },
@@ -293,4 +294,43 @@ export async function loadLegalPageFromDb(tab: PolicyTab): Promise<LegalPageLoad
     });
     return empty;
   }
+}
+
+export type AllLegalPagesData = Record<
+  PolicyTab,
+  {
+    htmlByLang: Record<Locale, string | null>;
+    publishedAt: Date | null;
+  }
+>;
+
+/** Load all four policy documents in parallel — never throws. */
+export async function loadAllLegalPagesFromDb(): Promise<AllLegalPagesData> {
+  const tabs: PolicyTab[] = ["terms", "privacy", "refund", "shipping"];
+  const results = await Promise.allSettled(tabs.map((tab) => loadLegalPageFromDb(tab)));
+
+  const out = {} as AllLegalPagesData;
+  for (let i = 0; i < tabs.length; i++) {
+    const tab = tabs[i];
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      out[tab] = {
+        htmlByLang: r.value.htmlByLang,
+        publishedAt: r.value.publishedAt,
+      };
+    } else {
+      await logDbFailure(`loadAllLegalPagesFromDb.${tab}`, r.reason, { pageType: tab });
+      out[tab] = {
+        htmlByLang: adminDefaultsForTab(tab),
+        publishedAt: null,
+      };
+    }
+  }
+
+  logLoaderOk("loadAllLegalPagesFromDb", {
+    ...getStore(),
+    tabs: tabs.length,
+  });
+
+  return out;
 }

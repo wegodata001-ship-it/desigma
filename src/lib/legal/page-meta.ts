@@ -45,3 +45,12 @@ export const LEGAL_PAGES: Record<PolicyTab, LegalPageMeta> = {
     },
   },
 };
+
+export const LEGAL_HUB = {
+  path: "/legal",
+  titles: {
+    he: "מידע משפטי — DESIGMA",
+    ar: "المعلومات القانونية — DESIGMA",
+    en: "Legal Information — DESIGMA",
+  },
+} as const;

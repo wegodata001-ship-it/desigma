@@ -184,4 +184,33 @@ html:has(.legal-page-shell) {
   .legal-toc__link {
     @apply rounded-lg px-2 py-1.5 transition hover:bg-zinc-800/60;
   }
+
+  /* /legal hub — all policies on one page (payment gateway) */
+  .legal-hub__merchant {
+    @apply shadow-lg shadow-black/20;
+  }
+
+  .legal-hub__contact-link {
+    @apply text-zinc-200 transition hover:text-orange-400 hover:underline underline-offset-2;
+  }
+
+  .legal-hub__toc-doc {
+    @apply border-t border-zinc-800/80 first:border-t-0;
+  }
+
+  .legal-prose .legal-document-block {
+    @apply scroll-mt-24 border-t border-zinc-800/90 pt-14 first:border-t-0 first:pt-0 md:pt-16;
+  }
+
+  .legal-prose .legal-document-block__title {
+    @apply scroll-mt-28 text-2xl font-bold text-orange-400 md:text-3xl;
+  }
+
+  .legal-prose .legal-document-block__body {
+    @apply mt-6;
+  }
+
+  .legal-prose .legal-document-block__body h2:first-of-type {
+    @apply pt-4;
+  }
 }

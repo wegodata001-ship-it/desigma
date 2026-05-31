@@ -1145,6 +1145,7 @@ export async function saveStoreSettings(
 }
 
 function revalidateLegalStorefrontPaths() {
+  revalidatePath("/legal");
   revalidatePath("/terms");
   revalidatePath("/privacy");
   revalidatePath("/refunds");

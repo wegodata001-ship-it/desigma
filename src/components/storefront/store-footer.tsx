@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 
 const LEGAL_LINKS = [
+  { href: "/legal", key: "legalHubLink" as const },
   { href: "/terms", key: "termsOfUse" as const },
   { href: "/privacy", key: "privacyPolicy" as const },
   { href: "/refunds", key: "refundPolicy" as const },

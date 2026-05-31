@@ -54,6 +54,10 @@ const dictionaries: Record<Locale, Dict> = {
     legalTableOfContents: "תוכן העניינים",
     legalLastUpdated: "עדכון אחרון",
     legalContentFallback: "התוכן המשפטי זמין כרגע בעברית.",
+    legalHubSubtitle: "חנות אלקטרוניקה פרימיום — מידע משפטי ללקוחות",
+    legalHubShipping: "משלוחים: 3–7 ימי עסקים ברוב חלקי הארץ",
+    legalHubPickup: "איסוף עצמי: בתיאום מראש",
+    legalHubLink: "כל המידע המשפטי",
   },
   ar: {
     freeShipping: "شحن مجاني فوق ₪299",
@@ -103,6 +107,10 @@ const dictionaries: Record<Locale, Dict> = {
     legalTableOfContents: "جدول المحتويات",
     legalLastUpdated: "آخر تحديث",
     legalContentFallback: "المحتوى القانوني متاح حالياً بالعبرية.",
+    legalHubSubtitle: "متجر إلكترونيات مميز — معلومات قانونية للعملاء",
+    legalHubShipping: "الشحن: 3–7 أيام عمل في معظم أنحاء البلاد",
+    legalHubPickup: "الاستلام الذاتي: بموعد مسبق",
+    legalHubLink: "جميع المعلومات القانونية",
   },
   en: {
     freeShipping: "Free shipping over ₪299",
@@ -152,6 +160,10 @@ const dictionaries: Record<Locale, Dict> = {
     legalTableOfContents: "Table of contents",
     legalLastUpdated: "Last updated",
     legalContentFallback: "Legal content is currently available in Hebrew.",
+    legalHubSubtitle: "Premium electronics — legal information for customers",
+    legalHubShipping: "Delivery: 3–7 business days in most areas",
+    legalHubPickup: "Self pickup: by appointment",
+    legalHubLink: "All legal information",
   },
 };
 
