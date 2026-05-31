@@ -106,6 +106,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ items: lines }),
       });
       if (!res.ok) {
+        console.error("Cart sync HTTP error", res.status);
         setSyncedOnce(true);
         return { items: lines, removed: false };
       }
@@ -115,6 +116,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         products?: Record<string, CartProductRow>;
       };
       if (gen !== syncGen.current) return { items: lines, removed: false };
+
+      console.log("Cart Items (client after sync)", lines);
+      for (const line of lines) {
+        const found = data.products?.[line.productId];
+        console.log({
+          productId: line.productId,
+          storeId: process.env.NEXT_PUBLIC_STORE_ID ?? "desigma",
+          foundProduct: !!found,
+        });
+      }
 
       setProducts(data.products ?? {});
       const next = data.items ?? [];
@@ -131,7 +142,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       setSyncedOnce(true);
       return { items: next, removed: changed && hadRemovals };
-    } catch {
+    } catch (err) {
+      console.error("Cart sync failed", err);
       setSyncedOnce(true);
       return { items: lines, removed: false };
     } finally {

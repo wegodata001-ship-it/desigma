@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { sanitizeCartLines } from "@/lib/cart/availability";
 import { loadCartProductsForStore } from "@/lib/cart/load-cart-products";
-import { getStoreId } from "@/lib/store-config";
+import { getRequestStoreId } from "@/lib/store-request";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ const Schema = z.object({
 });
 
 export async function POST(req: Request) {
-  const storeId = getStoreId();
+  const storeId = await getRequestStoreId();
   let json: unknown;
   try {
     json = await req.json();
@@ -31,9 +32,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid cart payload" }, { status: 400 });
   }
 
-  const productIds = Array.from(new Set(parsed.data.items.map((i) => i.productId)));
+  const cartItems = parsed.data.items;
+  console.log("Cart Items", cartItems);
+  console.log("Cart sync storeId", storeId);
+
+  const productIds = Array.from(new Set(cartItems.map((i) => i.productId)));
+
+  for (const productId of productIds) {
+    const foundInStore = await prisma.product.findFirst({
+      where: { id: productId, storeId },
+      select: { id: true, storeId: true, name_en: true },
+    });
+    const foundAnywhere = await prisma.product.findFirst({
+      where: { id: productId },
+      select: { id: true, storeId: true, name_en: true },
+    });
+    console.log({
+      productId,
+      storeId,
+      foundProduct: !!foundInStore,
+      productStoreId: foundAnywhere?.storeId ?? null,
+    });
+  }
+
   const productsMap = await loadCartProductsForStore(storeId, productIds);
-  const { items, removed, adjusted } = sanitizeCartLines(parsed.data.items, productsMap);
+  const { items, removed, adjusted } = sanitizeCartLines(cartItems, productsMap);
+
+  console.log("Cart sync result", {
+    storeId,
+    linesIn: cartItems.length,
+    linesOut: items.length,
+    productsResolved: productsMap.size,
+    removed,
+    adjusted,
+  });
 
   const products: Record<string, (typeof productsMap extends Map<string, infer V> ? V : never)> = {};
   for (const [id, p] of productsMap) {

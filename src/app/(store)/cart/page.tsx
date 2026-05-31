@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useCart } from "@/components/cart-context";
 import { AssetImg } from "@/components/asset-img";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
@@ -23,6 +23,27 @@ export default function CartPage() {
       }),
     [items, products],
   );
+
+  useEffect(() => {
+    console.log("Cart Items", items);
+    console.log("Cart page state", {
+      itemsLines: items.length,
+      cartCountBadge: items.reduce((n, l) => n + l.quantity, 0),
+      displayItems: displayItems.length,
+      productsResolved: Object.keys(products).length,
+      subtotal,
+      syncedOnce,
+      syncing,
+    });
+    for (const line of items) {
+      const p = products[line.productId];
+      console.log({
+        productId: line.productId,
+        storeId: process.env.NEXT_PUBLIC_STORE_ID ?? "desigma",
+        foundProduct: !!p,
+      });
+    }
+  }, [items, products, displayItems, subtotal, syncedOnce, syncing]);
 
   async function goCheckout() {
     const check = await validateForCheckout();
