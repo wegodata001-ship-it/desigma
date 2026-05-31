@@ -9,20 +9,18 @@ function stripTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
+import { getAdminBaseUrl, getPublicBaseUrl } from "../src/lib/base-url";
+
 function resolveStoreUrl(): string {
-  return stripTrailingSlash(
-    process.env.STORE_URL?.trim() ||
-      process.env.NEXT_PUBLIC_STORE_URL?.trim() ||
-      "http://localhost:3000",
-  );
+  return process.env.STORE_URL?.trim()
+    ? stripTrailingSlash(process.env.STORE_URL.trim())
+    : getPublicBaseUrl();
 }
 
 function resolveAdminUrl(): string {
-  return stripTrailingSlash(
-    process.env.ADMIN_URL?.trim() ||
-      process.env.NEXT_PUBLIC_ADMIN_URL?.trim() ||
-      "http://localhost:3000",
-  );
+  return process.env.ADMIN_URL?.trim()
+    ? stripTrailingSlash(process.env.ADMIN_URL.trim())
+    : getAdminBaseUrl();
 }
 
 const STORE_ROUTES = ["/terms", "/privacy", "/refunds", "/shipping", "/legal", "/contact"];

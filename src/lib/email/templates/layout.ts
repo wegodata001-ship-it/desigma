@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getStoreUrl } from "@/lib/app-url";
+import { getPublicBaseUrl } from "@/lib/base-url";
 
 const BRAND = "#f97316";
 const BG = "#0a0f1a";
@@ -16,7 +16,7 @@ export type EmailLayoutBrand = {
 export function absoluteAssetUrl(path: string | null | undefined): string | null {
   if (!path?.trim()) return null;
   const p = path.trim();
-  const base = getStoreUrl();
+  const base = getPublicBaseUrl();
   if (p.startsWith("http://") || p.startsWith("https://")) return p;
   if (p.startsWith("/")) return `${base}${p}`;
   if (p.startsWith("demo/") || p.startsWith("products/")) return `${base}/${p}`;

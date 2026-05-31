@@ -15,6 +15,7 @@
     "legal:publish": "tsx scripts/publish-all-legal.ts",
     "shipping:seed": "tsx scripts/seed-shipping-methods.ts",
     "qa:order-email-links": "tsx scripts/qa-order-email-links.ts",
+    "audit:urls": "tsx scripts/audit-urls.ts",
     "db:check": "tsx scripts/check-db-data.ts",
     "db:audit": "tsx scripts/audit-prisma.ts",
     "store:audit": "tsx scripts/store-isolation-audit.ts",

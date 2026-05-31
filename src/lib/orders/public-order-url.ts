@@ -1,4 +1,4 @@
-import { getStoreUrl } from "@/lib/app-url";
+import { getPublicBaseUrl } from "@/lib/base-url";
 import { storeOrderPath } from "@/lib/app-urls-shared";
 
 /** Public storefront path — no login required. */
@@ -7,5 +7,5 @@ export function publicOrderPath(orderNumber: string): string {
 }
 
 export function publicOrderUrl(orderNumber: string): string {
-  return `${getStoreUrl()}${publicOrderPath(orderNumber)}`;
+  return `${getPublicBaseUrl()}${publicOrderPath(orderNumber)}`;
 }

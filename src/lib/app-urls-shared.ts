@@ -29,9 +29,9 @@ export function isLikelyOrderId(slug: string): boolean {
 /** True when request host is the admin portal (env or portal.* subdomain). */
 export function isAdminPortalHostname(requestHost: string | null | undefined): boolean {
   if (!requestHost) return false;
-  const configured = hostFromUrl(
-    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ADMIN_URL : undefined,
-  );
+  const configured =
+    hostFromUrl(typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ADMIN_URL : undefined) ??
+    hostFromUrl(typeof process !== "undefined" ? process.env.ADMIN_APP_URL : undefined);
   if (configured && hostsMatch(requestHost, configured)) return true;
   const host = requestHost.toLowerCase().split(":")[0];
   return host === "portal.desigma-shop.com" || host.startsWith("portal.");

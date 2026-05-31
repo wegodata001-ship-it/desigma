@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
-import { getAppUrl } from "@/lib/app-url";
+import { getPublicBaseUrl } from "@/lib/base-url";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   const storeId = STORE_ID;
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token")?.trim();
-  const base = getAppUrl();
+  const token = new URL(req.url).searchParams.get("token")?.trim();
+  const base = getPublicBaseUrl();
 
   if (!token) {
     return NextResponse.redirect(new URL("/login?verify=invalid", base));

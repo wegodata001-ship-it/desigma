@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
-import { getAppUrl } from "@/lib/app-url";
+import { publicAbsolutePath } from "@/lib/base-url";
 import { clientIpFromRequest, rateLimit } from "@/lib/rate-limit";
 import { queueEmail, sendCustomerWelcomeEmail } from "@/lib/email/email-service";
 import { strongPasswordRegex } from "@/lib/password-strength";
@@ -131,9 +131,8 @@ export async function POST(req: Request) {
     select: { token: true },
   });
 
-  const appUrl = getAppUrl();
   const verifyUrl = verification
-    ? `${appUrl}/api/auth/verify-email?token=${encodeURIComponent(verification.token)}`
+    ? publicAbsolutePath(`/api/auth/verify-email?token=${encodeURIComponent(verification.token)}`)
     : null;
 
   queueEmail(() => sendCustomerWelcomeEmail(storeId, { name: user.name, email: user.email }));

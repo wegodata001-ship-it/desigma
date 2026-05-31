@@ -5,7 +5,8 @@ import { getEmailConfig, isEmailConfigured } from "@/lib/email/config";
 import { loadOrderEmailPayload } from "@/lib/email/order-email-data";
 import { logEmailFailure, logEmailSkipped, logEmailSuccess } from "@/lib/email/logger";
 import { isOrderPaidForEmail } from "@/lib/payments/post-payment-emails";
-import { adminOrderUrl, getStoreUrl } from "@/lib/app-url";
+import { adminOrderUrl } from "@/lib/app-url";
+import { publicAbsolutePath } from "@/lib/base-url";
 import { loadStoreEmailBrand, resolveAdminOrderEmail } from "@/lib/email/store-branding";
 import { getMailTransporter } from "@/lib/email/transporter";
 import { renderContactAutoReplyEmail } from "@/lib/email/templates/contact-auto-reply";
@@ -94,6 +95,11 @@ export async function sendOrderConfirmationEmail(orderId: string): Promise<void>
     statusLabel: payload.statusLabel,
   });
 
+  console.log("[email] order_confirmation", {
+    orderNumber: payload.order.orderNumber,
+    viewOrderUrl: `${brand.storeUrl}/orders/${encodeURIComponent(payload.order.orderNumber)}`,
+  });
+
   await sendMail({
     to: payload.order.customerEmail,
     subject,
@@ -171,7 +177,7 @@ export async function sendCustomerWelcomeEmail(storeId: string, data: { name: st
   const { subject, html } = renderWelcomeEmail({
     brand,
     name: data.name,
-    shopUrl: `${getStoreUrl()}/products`,
+    shopUrl: publicAbsolutePath("/products"),
   });
   await sendMail({ to: data.email, subject, html, type: "welcome" });
 }

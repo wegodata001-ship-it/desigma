@@ -1,5 +1,4 @@
 import type { StoreEmailBrand } from "@/lib/email/store-branding";
-import { getStoreUrl } from "@/lib/app-url";
 import { storeOrderPath } from "@/lib/app-urls-shared";
 import { absoluteAssetUrl, emailButton, infoRow } from "@/lib/email/templates/layout";
 
@@ -135,5 +134,5 @@ export function renderViewOrderButton(
   orderNumber: string,
   label = "צפייה בהזמנה שלי",
 ): string {
-  return `<p style="margin:24px 0 8px;text-align:center;">${emailButton(`${getStoreUrl()}${storeOrderPath(orderNumber)}`, label, brand.accentColor)}</p>`;
+  return `<p style="margin:24px 0 8px;text-align:center;">${emailButton(`${brand.storeUrl}${storeOrderPath(orderNumber)}`, label, brand.accentColor)}</p>`;
 }

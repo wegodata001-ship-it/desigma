@@ -33,7 +33,9 @@ export async function middleware(req: NextRequest) {
   const onAdminPortal = isAdminPortalHostname(requestHost);
   const onStorefront = isStorefrontHostname(requestHost);
   const storeHost = hostFromUrl(process.env.NEXT_PUBLIC_STORE_URL);
-  const adminHost = hostFromUrl(process.env.NEXT_PUBLIC_ADMIN_URL);
+  const adminHost =
+    hostFromUrl(process.env.NEXT_PUBLIC_ADMIN_URL) ??
+    hostFromUrl(process.env.ADMIN_APP_URL);
   const splitDomains = !!(storeHost && adminHost && !hostsMatch(storeHost, adminHost));
 
   // portal.desigma-shop.com → admin only (redirect any storefront page to /admin)

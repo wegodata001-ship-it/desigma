@@ -4,9 +4,16 @@ import {
   adminOrderPath,
   hostFromUrl,
   hostsMatch,
-  stripTrailingSlash,
   storeOrderPath,
 } from "@/lib/app-urls-shared";
+import {
+  getAdminBaseUrl,
+  getPublicBaseUrl,
+  PRODUCTION_ADMIN_BASE_URL,
+  PRODUCTION_PUBLIC_BASE_URL,
+  resolveBaseUrls,
+  type BaseUrlResolution,
+} from "@/lib/base-url";
 
 export {
   adminOrderPath,
@@ -17,52 +24,61 @@ export {
   stripTrailingSlash,
 } from "@/lib/app-urls-shared";
 
-function fallbackDevUrl(port = "3000"): string {
-  return `http://localhost:${port}`;
+export {
+  getAdminBaseUrl,
+  getPublicBaseUrl,
+  PRODUCTION_ADMIN_BASE_URL,
+  PRODUCTION_PUBLIC_BASE_URL,
+  publicAbsolutePath,
+  adminAbsolutePath,
+  rewriteLocalhostUrlsInHtml,
+  resolveBaseUrls,
+  type BaseUrlResolution,
+} from "@/lib/base-url";
+
+/** @deprecated Use PRODUCTION_PUBLIC_BASE_URL */
+export const PRODUCTION_STORE_URL = PRODUCTION_PUBLIC_BASE_URL;
+/** @deprecated Use PRODUCTION_ADMIN_BASE_URL */
+export const PRODUCTION_ADMIN_URL = PRODUCTION_ADMIN_BASE_URL;
+
+/** @deprecated Use resolveBaseUrls() */
+export type AppUrlResolution = BaseUrlResolution & {
+  storeUrl: string;
+  adminUrl: string;
+  sources: BaseUrlResolution["sources"] & { store: string };
+};
+
+export function resolveAppUrls(): AppUrlResolution {
+  const r = resolveBaseUrls();
+  return {
+    ...r,
+    storeUrl: r.publicBaseUrl,
+    adminUrl: r.adminBaseUrl,
+    sources: { ...r.sources, store: r.sources.public },
+  };
 }
 
-/**
- * Public storefront origin (customer emails, legal links, order tracking).
- * NEXT_PUBLIC_STORE_URL → NEXT_PUBLIC_APP_URL → localhost
- */
+/** @deprecated Prefer getPublicBaseUrl() */
 export function getStoreUrl(): string {
-  const store = process.env.NEXT_PUBLIC_STORE_URL?.trim();
-  if (store) return stripTrailingSlash(store);
-
-  const app = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (app) return stripTrailingSlash(app);
-
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${stripTrailingSlash(vercel)}`;
-
-  return fallbackDevUrl();
+  return getPublicBaseUrl();
 }
 
-/**
- * Admin portal origin (owner emails, admin order links).
- * NEXT_PUBLIC_ADMIN_URL → NEXT_PUBLIC_APP_URL → localhost
- */
+/** @deprecated Prefer getAdminBaseUrl() */
 export function getAdminUrl(): string {
-  const admin = process.env.NEXT_PUBLIC_ADMIN_URL?.trim();
-  if (admin) return stripTrailingSlash(admin);
-
-  const app = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (app) return stripTrailingSlash(app);
-
-  return fallbackDevUrl();
+  return getAdminBaseUrl();
 }
 
-/** @deprecated Prefer getStoreUrl() or getAdminUrl() */
+/** @deprecated Prefer getPublicBaseUrl() */
 export function getAppUrl(): string {
-  return getStoreUrl();
+  return getPublicBaseUrl();
 }
 
 export function getStoreHost(): string | null {
-  return hostFromUrl(getStoreUrl());
+  return hostFromUrl(getPublicBaseUrl());
 }
 
 export function getAdminHost(): string | null {
-  return hostFromUrl(getAdminUrl());
+  return hostFromUrl(getAdminBaseUrl());
 }
 
 export function isAdminPortalHost(requestHost: string | null | undefined): boolean {
@@ -81,9 +97,9 @@ export function isStorefrontHost(requestHost: string | null | undefined): boolea
 }
 
 export function storeOrderUrl(orderNumber: string): string {
-  return `${getStoreUrl()}${storeOrderPath(orderNumber)}`;
+  return `${getPublicBaseUrl()}${storeOrderPath(orderNumber)}`;
 }
 
 export function adminOrderUrl(orderId: string): string {
-  return `${getAdminUrl()}${adminOrderPath(orderId)}`;
+  return `${getAdminBaseUrl()}${adminOrderPath(orderId)}`;
 }

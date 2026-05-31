@@ -1,3 +1,5 @@
+import { rewriteLocalhostUrlsInHtml } from "@/lib/base-url";
+
 export type LegalTocItem = {
   id: string;
   title: string;
@@ -26,7 +28,9 @@ export function prepareLegalHtml(
   const toc: LegalTocItem[] = [];
   let index = 0;
 
-  const withIds = html.replace(/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/gi, (full, attrs = "", inner) => {
+  const sanitized = rewriteLocalhostUrlsInHtml(html);
+
+  const withIds = sanitized.replace(/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/gi, (full, attrs = "", inner) => {
     const title = inner.replace(/<[^>]+>/g, "").trim();
     if (!title) return full;
 
