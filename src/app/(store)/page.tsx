@@ -1,44 +1,69 @@
 import { prisma } from "@/lib/prisma";
-import { getStoreId } from "@/lib/store-config";
+import { getStore } from "@/lib/server/store-loaders";
+import { safeAllSettled } from "@/lib/server/safe-all-settled";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
-import { safeQuery } from "@/lib/server/safe-query";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-async function loadHomeData(storeId: string) {
-  const [banners, categories, products] = await Promise.all([
-    prisma.banner.findMany({
-      where: { storeId, active: true },
-      orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }],
-    }),
-    prisma.category.findMany({
-      where: { storeId, active: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
-    }),
-    prisma.product.findMany({
-      where: { storeId, active: true },
-      take: 60,
-      include: {
-        category: { select: { id: true, parentId: true, name_en: true } },
-        images: { orderBy: { sortOrder: "asc" }, take: 1 },
-      },
-      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-    }),
-  ]);
-  return { banners, categories, products };
+type HomeLoaded = {
+  banners: Awaited<ReturnType<typeof prisma.banner.findMany>>;
+  categories: Array<{
+    id: string;
+    parentId: string | null;
+    name_he: string;
+    name_ar: string;
+    name_en: string;
+    imageUrl: string | null;
+  }>;
+  products: Awaited<
+    ReturnType<
+      typeof prisma.product.findMany<{
+        include: {
+          category: { select: { id: true; parentId: true; name_en: true } };
+          images: true;
+        };
+      }>
+    >
+  >;
+};
+
+async function loadHomeData(storeId: string): Promise<HomeLoaded> {
+  const empty: HomeLoaded = { banners: [], categories: [], products: [] };
+
+  return safeAllSettled(
+    "store.home",
+    {
+      banners: () =>
+        prisma.banner.findMany({
+          where: { storeId, active: true },
+          orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }],
+        }),
+      categories: () =>
+        prisma.category.findMany({
+          where: { storeId, active: true },
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
+        }),
+      products: () =>
+        prisma.product.findMany({
+          where: { storeId, active: true },
+          take: 60,
+          include: {
+            category: { select: { id: true, parentId: true, name_en: true } },
+            images: { orderBy: { sortOrder: "asc" }, take: 1 },
+          },
+          orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+        }),
+    },
+    empty,
+    { storeId },
+  );
 }
 
-type HomeLoaded = Awaited<ReturnType<typeof loadHomeData>>;
-
 export default async function HomePage() {
-  const storeId = getStoreId();
-  const { banners, categories, products } = await safeQuery(
-    "store.home",
-    () => loadHomeData(storeId),
-    { banners: [], categories: [], products: [] } as HomeLoaded,
-    { timeoutMs: 25_000 },
-  );
+  const { storeId } = getStore();
+  const { banners, categories, products } = await loadHomeData(storeId);
 
   const heroBanner = banners.find((b) => b.isHero) ?? null;
   const nonHeroBanners = banners.filter((b) => !b.isHero);

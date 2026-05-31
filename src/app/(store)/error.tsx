@@ -14,9 +14,15 @@ export default function StoreSegmentError({
   useEffect(() => {
     runtimeLog({
       level: "error",
-      scope: "error_boundary",
-      message: "store_segment",
+      scope: "store_boundary",
+      message: "server_components_render_failed",
       error: error.message,
+      stack: error.stack,
+      digest: error.digest,
+    });
+    console.error("[store_boundary] Server Components render failed:", {
+      message: error.message,
+      stack: error.stack,
       digest: error.digest,
     });
   }, [error]);
@@ -28,6 +34,12 @@ export default function StoreSegmentError({
         <p className="mt-3 text-sm text-slate-400">
           לא הצלחנו לטעון את העמוד. נסו שוב — הניווט למעלה עדיין זמין.
         </p>
+        {process.env.NODE_ENV === "development" && error.message ? (
+          <pre className="mt-4 max-h-40 overflow-auto rounded-lg bg-black/40 p-3 text-start text-xs text-red-200">
+            {error.message}
+            {error.stack ? `\n\n${error.stack}` : ""}
+          </pre>
+        ) : null}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"

@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
+import { safeQuery } from "@/lib/server/safe-query";
 import { StoreProductDetailClient } from "@/components/storefront/store-product-detail-client";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function ProductPage({
   params,
@@ -12,25 +14,31 @@ export default async function ProductPage({
 }) {
   const { id } = await params;
   const storeId = getStoreId();
-  const product = await prisma.product.findFirst({
-    where: { id, storeId, active: true },
-    include: {
-      images: { orderBy: { sortOrder: "asc" } },
-      category: true,
-      variantGroups: {
-        orderBy: { sortOrder: "asc" },
-        include: { options: { orderBy: { sortOrder: "asc" } } },
-      },
-      relatedProducts: {
-        orderBy: { sortOrder: "asc" },
+  const product = await safeQuery(
+    "product.detail",
+    () =>
+      prisma.product.findFirst({
+        where: { id, storeId, active: true },
         include: {
-          relatedProduct: {
-            include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+          images: { orderBy: { sortOrder: "asc" } },
+          category: true,
+          variantGroups: {
+            orderBy: { sortOrder: "asc" },
+            include: { options: { orderBy: { sortOrder: "asc" } } },
+          },
+          relatedProducts: {
+            orderBy: { sortOrder: "asc" },
+            include: {
+              relatedProduct: {
+                include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+              },
+            },
           },
         },
-      },
-    },
-  });
+      }),
+    null,
+    { timeoutMs: 20_000 },
+  );
   if (!product) notFound();
 
   return (

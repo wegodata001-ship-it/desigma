@@ -64,7 +64,7 @@ export function logSafeQueryError(
     durationMs,
     path,
     error: e.message,
-    stack: process.env.NODE_ENV === "development" ? e.stack : undefined,
+    stack: e.stack,
   });
 }
 
@@ -89,6 +89,6 @@ export function logServerComponentError(component: string, err: unknown, path: s
     query: component,
     path,
     error: e.message,
-    stack: process.env.NODE_ENV === "development" ? e.stack : undefined,
+    stack: e.stack,
   });
 }

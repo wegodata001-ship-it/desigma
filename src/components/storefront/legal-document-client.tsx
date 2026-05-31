@@ -12,6 +12,7 @@ export type LegalPageDebug = {
   pageType: string;
   rowFound: boolean;
   htmlLength: Record<Locale, number>;
+  source?: string;
 };
 
 function formatLegalDate(iso: string | null, lang: Locale): string | null {

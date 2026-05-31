@@ -2,26 +2,66 @@ import { LegalDocumentClient } from "@/components/storefront/legal-document-clie
 import type { PolicyTab } from "@/lib/legal-defaults";
 import { legalHtmlLengths } from "@/lib/legal/resolve-content";
 import { LEGAL_PAGES } from "@/lib/legal/page-meta";
-import { loadLegalPageFromDb } from "@/lib/server/load-legal-page";
-import { STORE_ID, STORE_SLUG } from "@/lib/store";
+import { logDbFailure } from "@/lib/server/db-log";
+import { getStore, loadLegalPageFromDb } from "@/lib/server/store-loaders";
+import { getRequestPath } from "@/lib/server/request-path";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function LegalPage({ tab }: { tab: PolicyTab }) {
   const meta = LEGAL_PAGES[tab];
-  const { htmlByLang, publishedAt, rowFound } = await loadLegalPageFromDb(tab);
+  const ctx = getStore();
+  let path = meta.path;
+
+  let htmlByLang = { he: null as string | null, ar: null as string | null, en: null as string | null };
+  let publishedAt: Date | null = null;
+  let rowFound = false;
+  let source: "database" | "admin_defaults" | "empty" = "empty";
+
+  try {
+    path = await getRequestPath();
+  } catch {
+    path = meta.path;
+  }
+
+  try {
+    const loaded = await loadLegalPageFromDb(tab);
+    htmlByLang = loaded.htmlByLang;
+    publishedAt = loaded.publishedAt;
+    rowFound = loaded.rowFound;
+    source = loaded.source;
+  } catch (err) {
+    await logDbFailure(`LegalPage.${tab}`, err, {
+      ...ctx,
+      path,
+      pageType: tab,
+    });
+    // loadLegalPageFromDb already falls back — this catch is a last-resort safety net.
+  }
+
   const lengths = legalHtmlLengths(htmlByLang);
 
   console.log("[LegalPage render]", {
-    storeId: STORE_ID,
-    storeSlug: STORE_SLUG,
+    storeId: ctx.storeId,
+    storeSlug: ctx.storeSlug,
     pageType: tab,
     path: meta.path,
     rowFound,
+    source,
     htmlLength: lengths,
     publishedAt: publishedAt?.toISOString() ?? null,
   });
+
+  if (lengths.he + lengths.en + lengths.ar === 0) {
+    console.warn("[LegalPage] rendering with NO html content", {
+      storeId: ctx.storeId,
+      pageType: tab,
+      path,
+      rowFound,
+      source,
+    });
+  }
 
   return (
     <LegalDocumentClient
@@ -29,11 +69,12 @@ export async function LegalPage({ tab }: { tab: PolicyTab }) {
       htmlByLang={htmlByLang}
       publishedAt={publishedAt?.toISOString() ?? null}
       debug={{
-        storeId: STORE_ID,
-        storeSlug: STORE_SLUG,
+        storeId: ctx.storeId,
+        storeSlug: ctx.storeSlug,
         pageType: tab,
         rowFound,
         htmlLength: lengths,
+        source,
       }}
     />
   );

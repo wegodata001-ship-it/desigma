@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
+import { getCategories } from "@/lib/server/store-loaders";
+import { safeQuery } from "@/lib/server/safe-query";
 import { StoreProductsClient } from "@/components/storefront/store-products-client";
 import {
   collectDescendantCategoryIds,
@@ -8,6 +10,7 @@ import {
 } from "@/lib/smartphone-catalog";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function detectBrand(name: string, categoryPath: string): "apple" | "samsung" | null {
   const n = `${name} ${categoryPath}`.toLowerCase();
@@ -26,11 +29,7 @@ export default async function ProductsPage({
   const cat = sp.cat?.trim() || "";
   const q = sp.q?.trim() || "";
 
-  const categories = await prisma.category.findMany({
-    where: { storeId, active: true },
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
-  });
+  const categories = await getCategories(true);
   const byId = new Map(categories.map((c) => [c.id, c] as const));
   const selected = cat ? byId.get(cat) : null;
 
@@ -44,31 +43,37 @@ export default async function ProductsPage({
     !!smartphonesRoot &&
     (!selected || categoryIds?.includes(smartphonesRoot.id) || selected.id === smartphonesRoot.id);
 
-  const products = await prisma.product.findMany({
-    where: {
-      storeId,
-      active: true,
-      ...(categoryIds ? { categoryId: { in: categoryIds } } : {}),
-      ...(q
-        ? {
-            OR: [
-              { name_he: { contains: q, mode: "insensitive" } },
-              { name_ar: { contains: q, mode: "insensitive" } },
-              { name_en: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 1 },
-      category: { select: { name_he: true, name_en: true, parentId: true } },
-      variantGroups: {
-        orderBy: { sortOrder: "asc" },
-        include: { options: { orderBy: { sortOrder: "asc" } } },
-      },
-    },
-  });
+  const products = await safeQuery(
+    "products.list",
+    () =>
+      prisma.product.findMany({
+        where: {
+          storeId,
+          active: true,
+          ...(categoryIds ? { categoryId: { in: categoryIds } } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { name_he: { contains: q, mode: "insensitive" } },
+                  { name_ar: { contains: q, mode: "insensitive" } },
+                  { name_en: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          images: { orderBy: { sortOrder: "asc" }, take: 1 },
+          category: { select: { name_he: true, name_en: true, parentId: true } },
+          variantGroups: {
+            orderBy: { sortOrder: "asc" },
+            include: { options: { orderBy: { sortOrder: "asc" } } },
+          },
+        },
+      }),
+    [],
+    { timeoutMs: 20_000 },
+  );
 
   return (
     <StoreProductsClient
