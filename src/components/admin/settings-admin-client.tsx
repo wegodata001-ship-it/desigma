@@ -215,10 +215,10 @@ export function SettingsAdminClient({
             </div>
           </div>
 
-          <div className="col-span-full border-t border-slate-200 pt-4">
-            <h3 className="text-sm font-semibold text-slate-800">תקנון ומדיניות</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              עריכת תקנון, פרטיות, החזרות ומשלוחים בשלוש שפות — בדף ייעודי עם עורך עשיר.
+          <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-sm font-semibold text-slate-900">ניהול דפים משפטיים</h3>
+            <p className="mt-1 text-xs text-slate-600">
+              תקנון · פרטיות · ביטולים והחזרים · משלוחים — עורך עשיר, שמירת טיוטה ופרסום.
             </p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <label className="flex items-center gap-2 text-sm text-slate-800">
@@ -244,7 +244,7 @@ export function SettingsAdminClient({
               href="/admin/settings/terms"
               className="mt-4 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
-              פתיחת עורך תקנון ומדיניות
+              ניהול דפים משפטיים →
             </Link>
           </div>
 

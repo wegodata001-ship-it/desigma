@@ -1,32 +1,5 @@
-import { LegalDocumentClient } from "@/components/storefront/legal-document-client";
-import { LEGAL_FALLBACK } from "@/lib/legal-defaults";
-import { prisma } from "@/lib/prisma";
-import { STORE_ID } from "@/lib/store";
+import { LegalPage } from "@/components/storefront/legal-page";
 
-export const dynamic = "force-dynamic";
-
-const TITLES = {
-  he: "מדיניות פרטיות",
-  ar: "سياسة الخصوصية",
-  en: "Privacy policy",
-} as const;
-
-export default async function PrivacyPage() {
-  const storeId = STORE_ID;
-  const s = await prisma.storeSettings.findUnique({
-    where: { storeId },
-    select: { privacy_he: true, privacy_ar: true, privacy_en: true },
-  });
-
-  return (
-    <LegalDocumentClient
-      titles={TITLES}
-      fallback={LEGAL_FALLBACK.privacy}
-      htmlByLang={{
-        he: s?.privacy_he ?? null,
-        ar: s?.privacy_ar ?? null,
-        en: s?.privacy_en ?? null,
-      }}
-    />
-  );
+export default function PrivacyPage() {
+  return <LegalPage tab="privacy" />;
 }

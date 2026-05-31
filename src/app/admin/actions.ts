@@ -9,7 +9,7 @@ import { assertAssetPath, assertBannerImagePath } from "@/lib/assets-path";
 import { logAdminAction } from "@/lib/admin-audit";
 import { err, ok, type AdminActionResult } from "@/lib/admin-action-result";
 import type { PolicyTab } from "@/lib/legal-defaults";
-import { LEGAL_FALLBACK } from "@/lib/legal-defaults";
+import { LEGAL_ADMIN_DEFAULTS } from "@/lib/legal-defaults";
 import {
   columnFor,
   mergeDraft,
@@ -1191,8 +1191,29 @@ export async function publishPolicyTab(tab: PolicyTab): Promise<AdminActionResul
     const drafts = parsePolicyDrafts(row.policyDrafts);
     const tabDrafts = drafts[tab] ?? {};
     const hasDraft = Object.keys(tabDrafts).some((k) => tabDrafts[k as PolicyLang] !== undefined);
+
     if (!hasDraft) {
-      return err("אין טיוטה לפרסום. שמרו טיוטה או ערכו תוכן לפני פרסום.");
+      const hasPublished = (["he", "en", "ar"] as PolicyLang[]).some((L) => {
+        const col = columnFor(tab, L);
+        const v = row[col as keyof typeof row];
+        return typeof v === "string" && v.trim().length > 0;
+      });
+      if (!hasPublished) {
+        return err("אין טיוטה לפרסום. שמרו טיוטה או ערכו תוכן לפני פרסום.");
+      }
+      await prisma.storeSettings.update({
+        where: { storeId },
+        data: { [publishedAtField(tab)]: new Date() },
+      });
+      await logAdminAction({
+        userId,
+        action: "legal.publish",
+        entity: "StoreSettings",
+        metadata: { tab, source: "existing_columns" },
+      });
+      revalidateLegalStorefrontPaths();
+      revalidatePath("/admin/settings/terms");
+      return ok();
     }
 
     const updateData: Prisma.StoreSettingsUpdateInput = {
@@ -1235,7 +1256,7 @@ export async function publishPolicyTab(tab: PolicyTab): Promise<AdminActionResul
 export async function restorePolicyTabDefaults(tab: PolicyTab): Promise<AdminActionResult> {
   try {
     const { storeId, userId } = await guard();
-    const d = LEGAL_FALLBACK[tab];
+    const d = LEGAL_ADMIN_DEFAULTS[tab];
     const pubField = publishedAtField(tab);
 
     const row = await prisma.storeSettings.findUnique({
@@ -1248,10 +1269,14 @@ export async function restorePolicyTabDefaults(tab: PolicyTab): Promise<AdminAct
         ? Prisma.DbNull
         : (nextDrafts as Prisma.InputJsonValue);
 
+    const he = d.he?.trim() || null;
+    const en = d.en?.trim() || null;
+    const ar = d.ar?.trim() || null;
+
     const updateData: Prisma.StoreSettingsUpdateInput = {
-      [`${tab}_he`]: d.he,
-      [`${tab}_en`]: d.en,
-      [`${tab}_ar`]: d.ar,
+      [`${tab}_he`]: he,
+      [`${tab}_en`]: en,
+      [`${tab}_ar`]: ar,
       [pubField]: new Date(),
       policyDrafts: policyDraftsValue,
     };
@@ -1261,9 +1286,9 @@ export async function restorePolicyTabDefaults(tab: PolicyTab): Promise<AdminAct
       create: {
         storeId,
         nextOrderNumber: 1001,
-        [`${tab}_he`]: d.he,
-        [`${tab}_en`]: d.en,
-        [`${tab}_ar`]: d.ar,
+        [`${tab}_he`]: he,
+        [`${tab}_en`]: en,
+        [`${tab}_ar`]: ar,
         [pubField]: new Date(),
         ...(Object.keys(nextDrafts).length > 0
           ? { policyDrafts: nextDrafts as Prisma.InputJsonValue }

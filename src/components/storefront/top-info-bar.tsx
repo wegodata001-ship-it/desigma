@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { LogoutButton } from "@/components/logout-button";
 
 export function TopInfoBar({ isLoggedIn }: { isLoggedIn: boolean }) {
   const { t } = useStoreI18n();
@@ -11,19 +12,23 @@ export function TopInfoBar({ isLoggedIn }: { isLoggedIn: boolean }) {
         <div className="flex items-center gap-3">
           <span>{t("freeShipping")}</span>
           <span className="text-zinc-700">|</span>
-          <span>072-000-0000</span>
+          <a href="tel:+972542298822" className="transition hover:text-orange-400">
+            054-2298822
+          </a>
+          <span className="text-zinc-700">|</span>
+          <Link href="/terms" className="transition hover:text-orange-400">
+            {t("termsOfUse")}
+          </Link>
           <span className="text-zinc-700">|</span>
           <span>{t("customerService")}</span>
-          <span className="text-zinc-700">|</span>
-          <span>{t("orderTracking")}</span>
-          <span className="text-zinc-700">|</span>
-          <span>{t("branches")}</span>
         </div>
         <div className="flex items-center gap-2">
-          {!isLoggedIn && (
+          {!isLoggedIn ? (
             <Link href="/login" className="text-zinc-200 transition hover:text-orange-400">
               {t("loginRegister")}
             </Link>
+          ) : (
+            <LogoutButton label={t("logout")} className="text-zinc-200 transition hover:text-orange-400" />
           )}
         </div>
       </div>

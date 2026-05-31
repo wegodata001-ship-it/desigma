@@ -12,6 +12,7 @@
     "demo:smartphone-images": "python scripts/generate-smartphone-images.py",
     "demo:product-images": "python scripts/generate-product-png-images.py",
     "db:sync-admin-password": "tsx scripts/sync-admin-password.ts",
+    "legal:publish": "tsx scripts/publish-all-legal.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

@@ -1,5 +1,6 @@
 import { CartProvider } from "@/components/cart-context";
 import { SiteHeader } from "@/components/site-header";
+import { StoreFooter } from "@/components/storefront/store-footer";
 import { StoreI18nProvider } from "@/components/storefront/store-i18n";
 import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 
@@ -9,9 +10,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   return (
     <StoreI18nProvider>
       <CartProvider>
-        <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-white pb-20 md:pb-0">
+        <div className="flex min-h-screen flex-col bg-gradient-to-b from-black via-zinc-950 to-black text-white pb-20 md:pb-0">
           <SiteHeader />
-          {children}
+          <main className="flex-1">{children}</main>
+          <StoreFooter />
           <MobileBottomNav />
         </div>
       </CartProvider>

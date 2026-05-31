@@ -9,7 +9,7 @@ import {
   savePolicyDraft,
 } from "@/app/admin/actions";
 import type { PolicyTab } from "@/lib/legal-defaults";
-import { LEGAL_FALLBACK } from "@/lib/legal-defaults";
+import { LEGAL_ADMIN_DEFAULTS } from "@/lib/legal-defaults";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import {
   mergeDraft,
@@ -86,7 +86,7 @@ export function TermsPoliciesAdminClient({
       const key = `${tTab}_${tLang}` as keyof LegalPublishedDTO;
       const p = published[key];
       if (typeof p === "string" && p.trim().length > 0) return p;
-      return LEGAL_FALLBACK[tTab][tLang];
+      return LEGAL_ADMIN_DEFAULTS[tTab][tLang] ?? "";
     },
     [localDrafts, published],
   );

@@ -84,7 +84,7 @@ function AdminAppShellInner({
   const logout = useCallback(async () => {
     setLoggingOut(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       router.push("/login-admin");
       router.refresh();
     } finally {

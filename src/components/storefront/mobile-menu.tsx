@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import type { UserRole } from "@prisma/client";
 import { CategoryAccordion } from "@/components/storefront/category-accordion";
+import { LogoutButton } from "@/components/logout-button";
 
 type Category = { id: string; parentId: string | null; name_he: string; name_ar: string; name_en: string };
 
@@ -103,16 +104,32 @@ export function MobileMenu({
                       Admin
                     </Link>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900/20 px-3 py-2.5 text-center text-[13px] font-semibold text-zinc-300"
-                    >
-                      סגור
-                    </button>
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 px-3 py-2.5 text-center text-[13px] font-semibold">
+                      <LogoutButton label={t("logout")} className="w-full text-zinc-200" />
+                    </div>
                   )}
                 </>
               )}
+            </div>
+            {isLoggedIn && (role === "STORE_OWNER" || role === "SUPER_ADMIN") && (
+              <div className="mt-2">
+                <LogoutButton
+                  label={t("logout")}
+                  className="w-full rounded-xl border border-zinc-800 bg-zinc-900/20 px-3 py-2.5 text-center text-[13px] font-semibold text-zinc-200"
+                />
+              </div>
+            )}
+
+            <div className="mt-6 border-t border-zinc-800 pt-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">{t("footerLegal")}</p>
+              <div className="mt-2 flex flex-col gap-2 text-sm">
+                <Link href="/terms" onClick={onClose} className="text-zinc-300 hover:text-orange-400">
+                  {t("termsOfUse")}
+                </Link>
+                <Link href="/privacy" onClick={onClose} className="text-zinc-300 hover:text-orange-400">
+                  {t("privacyPolicy")}
+                </Link>
+              </div>
             </div>
           </motion.aside>
         </div>

@@ -109,3 +109,79 @@ body {
     transform: translate3d(0.5%, -1%, 0);
   }
 }
+
+/* Legal policy pages — full-width professional layout */
+html:has(.legal-page-shell) {
+  scroll-behavior: smooth;
+}
+
+@layer components {
+  .legal-page-shell {
+    @apply min-h-[60vh];
+  }
+
+  .legal-prose {
+    @apply text-[0.9375rem] leading-[1.75] text-zinc-100 md:text-[1.0625rem];
+  }
+
+  .legal-prose .lead {
+    @apply mb-10 text-lg leading-relaxed text-zinc-200 md:text-xl;
+  }
+
+  .legal-prose h2 {
+    @apply scroll-mt-28 border-b border-zinc-800 pb-3 pt-12 text-xl font-bold text-orange-400 first:pt-0 md:text-2xl;
+  }
+
+  .legal-prose h3 {
+    @apply mt-8 text-lg font-semibold text-orange-300;
+  }
+
+  .legal-prose p {
+    @apply mt-4 text-zinc-100;
+  }
+
+  .legal-prose p + p {
+    @apply mt-3;
+  }
+
+  .legal-prose ol,
+  .legal-prose ul {
+    @apply mt-4 space-y-3 ps-6 text-zinc-100;
+  }
+
+  .legal-prose ol {
+    @apply list-decimal;
+  }
+
+  .legal-prose ol > li::marker {
+    @apply font-semibold text-orange-400;
+  }
+
+  .legal-prose ul {
+    @apply list-disc;
+  }
+
+  .legal-prose ul > li::marker {
+    @apply text-orange-500;
+  }
+
+  .legal-prose li {
+    @apply leading-relaxed;
+  }
+
+  .legal-prose a {
+    @apply text-orange-400 underline-offset-2 transition hover:text-orange-300 hover:underline;
+  }
+
+  .legal-prose strong {
+    @apply font-semibold text-white;
+  }
+
+  .legal-toc__list {
+    @apply list-none ps-0;
+  }
+
+  .legal-toc__link {
+    @apply rounded-lg px-2 py-1.5 transition hover:bg-zinc-800/60;
+  }
+}
