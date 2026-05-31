@@ -216,6 +216,17 @@ export function SettingsAdminClient({
           </div>
 
           <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-sm font-semibold text-slate-900">{t("shippingMethodsTitle")}</h3>
+            <p className="mt-1 text-xs text-slate-600">{t("shippingMethodsHint")}</p>
+            <Link
+              href="/admin/settings/shipping"
+              className="mt-4 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              {t("shippingMethodsManage")} →
+            </Link>
+          </div>
+
+          <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-5">
             <h3 className="text-sm font-semibold text-slate-900">ניהול דפים משפטיים</h3>
             <p className="mt-1 text-xs text-slate-600">
               תקנון · פרטיות · ביטולים והחזרים · משלוחים — עורך עשיר, שמירת טיוטה ופרסום.

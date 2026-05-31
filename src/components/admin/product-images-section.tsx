@@ -1,19 +1,16 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
-import { ProductMediaEditor } from "@/components/admin/product-media-editor";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
 import {
+  addProductImage,
   deleteProductImage,
-  replaceProductImage,
   setMainProductImage,
   setProductImageOrder,
 } from "@/app/admin/actions";
 import { compressImageForUpload } from "@/lib/image-compress-client";
-import type { GalleryDisplayConfig } from "@/lib/product-gallery-display";
 
 export type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 
@@ -26,30 +23,23 @@ function sortImages(im: Img[]): Img[] {
 
 export function ProductImagesSection({
   product,
-  galleryDisplay,
   selectedFiles,
   setSelectedFiles,
   onRefresh,
+  onCopyToColors,
 }: {
   product: { id: string; images: Img[] } | null;
-  galleryDisplay: GalleryDisplayConfig;
   selectedFiles: File[];
   setSelectedFiles: (files: File[]) => void;
   onRefresh?: () => void;
+  onCopyToColors?: () => void;
 }) {
   const { t } = useAdminI18n();
   const fileInputId = useId();
   const [ordered, setOrdered] = useState<Img[]>(() => sortImages(product?.images ?? []));
   const [activeIdx, setActiveIdx] = useState(0);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 3200);
-    return () => window.clearTimeout(id);
-  }, [toast]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const next = sortImages(product?.images ?? []);
@@ -57,103 +47,168 @@ export function ProductImagesSection({
     setActiveIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
   }, [product?.images]);
 
+  useEffect(() => {
+    if (!saved) return;
+    const id = window.setTimeout(() => setSaved(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [saved]);
+
   const active = ordered[activeIdx] ?? null;
 
-  const onDropFiles = useCallback(
-    (list: FileList | File[]) => {
-      const arr = Array.from(list).filter((f) => f.type.startsWith("image/"));
-      if (arr.length === 0) return;
-      setSelectedFiles([...selectedFiles, ...arr]);
-    },
-    [selectedFiles, setSelectedFiles],
-  );
+  const showSaved = useCallback(() => setSaved(true), []);
 
   const persistOrder = useCallback(
     async (next: Img[]) => {
       if (!product) return;
+      const mainFirst = sortImages(next);
       const fd = new FormData();
       fd.append("productId", product.id);
-      fd.append("orderedIds", JSON.stringify(next.map((x) => x.id)));
+      fd.append("orderedIds", JSON.stringify(mainFirst.map((x) => x.id)));
       const res = await setProductImageOrder(fd);
       if (!res.ok) throw new Error(res.error);
+      setOrdered(mainFirst);
       onRefresh?.();
+      showSaved();
     },
-    [product, onRefresh],
+    [product, onRefresh, showSaved],
   );
 
-  const handleDropReorder = async (targetId: string) => {
-    if (!dragId || dragId === targetId || !product) return;
-    const ids = ordered.map((x) => x.id);
-    const from = ids.indexOf(dragId);
-    const to = ids.indexOf(targetId);
-    if (from < 0 || to < 0) return;
-    const nextIds = [...ids];
-    const [moved] = nextIds.splice(from, 1);
-    nextIds.splice(to, 0, moved);
-    const byId = new Map(ordered.map((x) => [x.id, x]));
-    const next = nextIds.map((id, idx) => {
-      const row = byId.get(id)!;
-      return { ...row, sortOrder: idx };
-    });
-    setOrdered(next);
-    setDragId(null);
-    try {
-      await persistOrder(next);
-    } catch {
-      setOrdered(sortImages(product.images));
-    }
-  };
+  const uploadFiles = useCallback(
+    async (list: FileList | File[]) => {
+      const arr = Array.from(list).filter((f) => f.type.startsWith("image/"));
+      if (arr.length === 0) return;
 
-  const runReplaceUpload = async (imageId: string, file: File) => {
-    if (!product) return;
-    setBusyId(imageId);
-    try {
-      let uploadFile = file;
-      try {
-        uploadFile = await compressImageForUpload(file);
-      } catch (e) {
-        if (e instanceof Error && e.message === "FILE_TOO_LARGE") throw e;
+      if (!product?.id) {
+        setSelectedFiles([...selectedFiles, ...arr]);
+        return;
       }
-      const path = await uploadAdminAsset(uploadFile, "products", {
-        entityId: product.id,
-        originalName: file.name,
-        compress: false,
-      });
+
+      setBusy(true);
+      try {
+        let order = ordered.length;
+        const hadImages = ordered.length > 0;
+        for (let i = 0; i < arr.length; i++) {
+          let file = arr[i];
+          try {
+            file = await compressImageForUpload(file);
+          } catch (e) {
+            if (e instanceof Error && e.message === "FILE_TOO_LARGE") throw e;
+          }
+          const path = await uploadAdminAsset(file, "products", {
+            entityId: product.id,
+            originalName: arr[i].name,
+            compress: false,
+          });
+          const fd = new FormData();
+          fd.append("productId", product.id);
+          fd.append("url", path);
+          fd.append("sortOrder", String(order++));
+          if (!hadImages && i === 0) fd.append("isMain", "on");
+          const res = await addProductImage(fd);
+          if (!res.ok) throw new Error(res.error);
+        }
+        showSaved();
+        onRefresh?.();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [product, ordered.length, selectedFiles, setSelectedFiles, onRefresh, showSaved],
+  );
+
+  const handleSetMain = async (imageId: string) => {
+    if (!product) return;
+    setBusy(true);
+    try {
       const fd = new FormData();
+      fd.append("productId", product.id);
       fd.append("imageId", imageId);
-      fd.append("url", path);
-      const res = await replaceProductImage(fd);
+      const res = await setMainProductImage(fd);
       if (!res.ok) throw new Error(res.error);
+      showSaved();
       onRefresh?.();
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   };
 
-  const previews = useMemo(
+  const handleMove = async (idx: number, direction: "left" | "right") => {
+    if (idx <= 0) return;
+    const target = direction === "left" ? idx - 1 : idx + 1;
+    if (target <= 0 || target >= ordered.length) return;
+    const next = [...ordered];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setActiveIdx(target);
+    setBusy(true);
+    try {
+      await persistOrder(next.map((x, i) => ({ ...x, sortOrder: i })));
+    } catch {
+      setOrdered(sortImages(product?.images ?? []));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (imageId: string) => {
+    if (!product) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("imageId", imageId);
+      const res = await deleteProductImage(fd);
+      if (!res.ok) throw new Error(res.error);
+      showSaved();
+      onRefresh?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pendingPreviews = useMemo(
     () => selectedFiles.map((f) => ({ name: f.name, url: URL.createObjectURL(f) })),
     [selectedFiles],
   );
 
   useEffect(() => {
     return () => {
-      for (const p of previews) URL.revokeObjectURL(p.url);
+      for (const p of pendingPreviews) URL.revokeObjectURL(p.url);
     };
-  }, [previews]);
+  }, [pendingPreviews]);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <div className="text-sm font-semibold text-slate-900">{t("productImagesLabel")}</div>
-        <p className="mt-0.5 text-xs text-slate-500">{t("productImagesStudioHint")}</p>
+    <div className="relative space-y-4">
+      {saved && (
+        <div
+          role="status"
+          className="pointer-events-none fixed end-4 top-4 z-[120] rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-lg"
+        >
+          ✓ {t("autoSaved")}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">{t("productImagesLabel")}</div>
+          <p className="mt-0.5 text-xs text-slate-500">{t("productImagesStudioHint")}</p>
+        </div>
+        {onCopyToColors && ordered.length > 0 && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCopyToColors}
+            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+          >
+            {t("copyImagesToColors")}
+          </button>
+        )}
       </div>
 
       <div
-        className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-8 transition hover:border-blue-400 hover:bg-blue-50/30"
+        className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-6 transition hover:border-blue-400 hover:bg-blue-50/30"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          onDropFiles(e.dataTransfer.files);
+          void uploadFiles(e.dataTransfer.files);
         }}
       >
         <input
@@ -162,9 +217,10 @@ export function ProductImagesSection({
           multiple
           className="hidden"
           id={fileInputId}
+          disabled={busy}
           onChange={(e) => {
             const f = e.currentTarget.files;
-            if (f?.length) onDropFiles(f);
+            if (f?.length) void uploadFiles(f);
             e.currentTarget.value = "";
           }}
         />
@@ -172,29 +228,22 @@ export function ProductImagesSection({
           <p className="text-sm font-medium text-slate-700">{t("dropImagesHere")}</p>
           <label
             htmlFor={fileInputId}
-            className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={`cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 ${busy ? "pointer-events-none opacity-50" : ""}`}
           >
-            {t("chooseImages")}
+            {busy ? t("saving") : t("chooseImages")}
           </label>
         </div>
       </div>
 
-      {selectedFiles.length > 0 && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 p-4">
-          <span className="text-xs font-semibold text-emerald-900">
+      {selectedFiles.length > 0 && !product?.id && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4">
+          <span className="text-xs font-semibold text-amber-900">
             {t("pendingUploads")} ({selectedFiles.length}) — {t("pendingUploadsSaveHint")}
           </span>
           <ul className="mt-3 flex flex-wrap gap-3">
-            {previews.map((p) => (
+            {pendingPreviews.map((p) => (
               <li key={p.url}>
-                <Image
-                  src={p.url}
-                  alt=""
-                  width={112}
-                  height={112}
-                  unoptimized
-                  className="h-28 w-28 rounded-xl border border-emerald-200 object-cover shadow-sm"
-                />
+                <AssetImg path={p.url} alt="" className="h-20 w-20 rounded-xl border object-cover" />
               </li>
             ))}
           </ul>
@@ -203,103 +252,80 @@ export function ProductImagesSection({
 
       {product && ordered.length > 0 && active && (
         <div className="space-y-4">
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {ordered.map((im, idx) => (
-              <div
-                key={im.id}
-                draggable
-                onDragStart={() => setDragId(im.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => void handleDropReorder(im.id)}
-                className={`group/thumb relative shrink-0 ${
-                  idx === activeIdx ? "ring-2 ring-blue-500 ring-offset-2" : ""
-                }`}
-              >
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
+            <div className="relative mx-auto aspect-square max-h-[420px] w-full max-w-lg">
+              <AssetImg path={active.url} alt="" className="object-contain" />
+            </div>
+            {active.isMain && (
+              <span className="absolute start-3 top-3 rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white shadow">
+                ★ {t("main")}
+              </span>
+            )}
+          </div>
+
+          {active && (
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+              <span className="w-full text-center text-xs font-medium text-slate-500">{t("imageActions")}</span>
+              {!active.isMain && (
                 <button
                   type="button"
-                  onClick={() => setActiveIdx(idx)}
-                  className={`relative h-24 w-24 overflow-hidden rounded-xl border-2 transition md:h-28 md:w-28 ${
-                    idx === activeIdx
-                      ? "border-blue-600 shadow-md"
-                      : "border-slate-200 hover:border-blue-400 hover:shadow"
-                  }`}
+                  disabled={busy}
+                  onClick={() => void handleSetMain(active.id)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <AssetImg path={im.url} alt="" className="object-cover transition group-hover/thumb:scale-105" />
-                  {im.isMain && (
-                    <span className="absolute bottom-0 left-0 right-0 bg-blue-600/95 py-0.5 text-center text-[10px] font-bold text-white">
-                      {t("main")}
-                    </span>
-                  )}
+                  ⭐ {t("setAsMainImage")}
                 </button>
-                <div className="pointer-events-none absolute inset-0 flex items-start justify-end gap-1 p-1 opacity-0 transition group-hover/thumb:pointer-events-auto group-hover/thumb:opacity-100">
-                  <label
-                    className="pointer-events-auto cursor-pointer rounded-md bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow hover:bg-white"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    ↻
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) void runReplaceUpload(im.id, f);
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="pointer-events-auto rounded-md bg-red-600/95 px-1.5 py-0.5 text-[10px] font-bold text-white shadow hover:bg-red-600"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const fd = new FormData();
-                      fd.append("imageId", im.id);
-                      void deleteProductImage(fd).then((res) => {
-                        if (res.ok) onRefresh?.();
-                      });
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-slate-400">{t("dragReorderHint")}</p>
-
-          {toast && (
-            <div
-              role="status"
-              className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-opacity"
-            >
-              {toast}
+              )}
+              <button
+                type="button"
+                disabled={busy || activeIdx <= 1}
+                onClick={() => void handleMove(activeIdx, "left")}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                title={t("moveImageRight")}
+              >
+                ⬆ {t("moveImageRight")}
+              </button>
+              <button
+                type="button"
+                disabled={busy || activeIdx === 0 || activeIdx >= ordered.length - 1}
+                onClick={() => void handleMove(activeIdx, "right")}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                title={t("moveImageLeft")}
+              >
+                ⬇ {t("moveImageLeft")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleDelete(active.id)}
+                className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                🗑 {t("deleteShort")}
+              </button>
             </div>
           )}
 
-          <ProductMediaEditor
-            key={active.id}
-            imageUrl={active.url}
-            alt={t("productImagesLabel")}
-            galleryDisplay={galleryDisplay}
-            isMain={active.isMain}
-            busy={busyId === active.id}
-            onCropSaved={() => setToast(t("imageCropSaved"))}
-            onSetMain={async () => {
-              const fd = new FormData();
-              fd.append("productId", product.id);
-              fd.append("imageId", active.id);
-              const res = await setMainProductImage(fd);
-              if (res.ok) onRefresh?.();
-            }}
-            onReplaceFile={async (file) => runReplaceUpload(active.id, file)}
-            onDelete={async () => {
-              const fd = new FormData();
-              fd.append("imageId", active.id);
-              const res = await deleteProductImage(fd);
-              if (res.ok) onRefresh?.();
-            }}
-          />
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {ordered.map((im, idx) => (
+              <button
+                key={im.id}
+                type="button"
+                onClick={() => setActiveIdx(idx)}
+                className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition md:h-24 md:w-24 ${
+                  idx === activeIdx
+                    ? "border-blue-600 shadow-md ring-2 ring-blue-300"
+                    : "border-slate-200 hover:border-blue-400"
+                }`}
+              >
+                <AssetImg path={im.url} alt="" className="object-cover" />
+                {im.isMain && (
+                  <span className="absolute bottom-0 inset-x-0 bg-blue-600/95 py-0.5 text-center text-[10px] font-bold text-white">
+                    {t("main")}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

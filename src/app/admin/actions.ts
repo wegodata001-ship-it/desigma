@@ -462,13 +462,7 @@ export async function addProductImage(formData: FormData): Promise<AdminActionRe
     const setMain = formData.get("isMain") === "on";
 
     await prisma.$transaction(async (tx) => {
-      if (setMain) {
-        await tx.productImage.updateMany({
-          where: { productId, storeId },
-          data: { isMain: false },
-        });
-      }
-      await tx.productImage.create({
+      const created = await tx.productImage.create({
         data: {
           storeId,
           productId,
@@ -477,6 +471,22 @@ export async function addProductImage(formData: FormData): Promise<AdminActionRe
           isMain: setMain,
         },
       });
+      if (setMain) {
+        const all = await tx.productImage.findMany({
+          where: { productId, storeId },
+          orderBy: { sortOrder: "asc" },
+          select: { id: true },
+        });
+        const rest = all.map((i) => i.id).filter((id) => id !== created.id);
+        await Promise.all(
+          [created.id, ...rest].map((id, idx) =>
+            tx.productImage.updateMany({
+              where: { id, productId, storeId },
+              data: { sortOrder: idx, isMain: idx === 0 },
+            }),
+          ),
+        );
+      }
     });
     await logAdminAction({
       userId,
@@ -501,6 +511,20 @@ export async function deleteProductImage(formData: FormData): Promise<AdminActio
     });
     if (!img) return err("תמונה לא נמצאה");
     await prisma.productImage.deleteMany({ where: { id: imageId, storeId } });
+
+    const remaining = await prisma.productImage.findMany({
+      where: { productId: img.productId, storeId },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true },
+    });
+    if (remaining.length > 0) {
+      await applyProductImageOrder(
+        img.productId,
+        storeId,
+        remaining.map((r) => r.id),
+      );
+    }
+
     await logAdminAction({
       userId,
       action: "product.image.delete",
@@ -508,10 +532,26 @@ export async function deleteProductImage(formData: FormData): Promise<AdminActio
       entityId: imageId,
     });
     revalidatePath("/admin/products");
+    revalidatePath(`/products/${img.productId}`);
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "מחיקת תמונה נכשלה");
   }
+}
+
+async function applyProductImageOrder(
+  productId: string,
+  storeId: string,
+  orderedIds: string[],
+): Promise<void> {
+  await prisma.$transaction(
+    orderedIds.map((id, idx) =>
+      prisma.productImage.updateMany({
+        where: { id, productId, storeId },
+        data: { sortOrder: idx, isMain: idx === 0 },
+      }),
+    ),
+  );
 }
 
 export async function setMainProductImage(formData: FormData): Promise<AdminActionResult> {
@@ -521,16 +561,14 @@ export async function setMainProductImage(formData: FormData): Promise<AdminActi
     const imageId = formData.get("imageId") as string;
     await prisma.product.findFirstOrThrow({ where: { id: productId, storeId } });
     await prisma.productImage.findFirstOrThrow({ where: { id: imageId, productId, storeId } });
-    await prisma.$transaction([
-      prisma.productImage.updateMany({
-        where: { productId, storeId },
-        data: { isMain: false },
-      }),
-      prisma.productImage.updateMany({
-        where: { id: imageId, storeId },
-        data: { isMain: true },
-      }),
-    ]);
+
+    const images = await prisma.productImage.findMany({
+      where: { productId, storeId },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true },
+    });
+    const rest = images.map((i) => i.id).filter((id) => id !== imageId);
+    await applyProductImageOrder(productId, storeId, [imageId, ...rest]);
     await logAdminAction({
       userId,
       action: "product.image.main",
@@ -568,14 +606,7 @@ export async function setProductImageOrder(formData: FormData): Promise<AdminAct
     const idSet = new Set(existing.map((e) => e.id));
     if (orderedIds.some((id) => !idSet.has(id))) return err("רשימת תמונות לא תואמת");
 
-    await prisma.$transaction(
-      orderedIds.map((id, idx) =>
-        prisma.productImage.updateMany({
-          where: { id, productId, storeId },
-          data: { sortOrder: idx },
-        }),
-      ),
-    );
+    await applyProductImageOrder(productId, storeId, orderedIds);
 
     await logAdminAction({
       userId,
@@ -881,13 +912,26 @@ export async function upsertDelivery(formData: FormData): Promise<AdminActionRes
   try {
     const { storeId, userId } = await guard();
     const id = (formData.get("id") as string) || "";
-    const type = formData.get("type") as "PICKUP" | "SHIPPING";
+    const type = formData.get("type") as
+      | "PICKUP"
+      | "SHIPPING"
+      | "HOME"
+      | "EXPRESS"
+      | "PICKUP_POINT"
+      | "INTERNATIONAL";
+    const eta = (key: string) => {
+      const v = (formData.get(key) as string)?.trim();
+      return v && v.length > 0 ? v : null;
+    };
     const common = {
       name_he: formData.get("name_he") as string,
       name_ar: formData.get("name_ar") as string,
       name_en: formData.get("name_en") as string,
       type,
       price: new Prisma.Decimal(Number(formData.get("price"))),
+      eta_he: eta("eta_he"),
+      eta_ar: eta("eta_ar"),
+      eta_en: eta("eta_en"),
       active: formData.get("active") === "on",
       sortOrder: Number(formData.get("sortOrder") || 0),
     };
@@ -904,6 +948,7 @@ export async function upsertDelivery(formData: FormData): Promise<AdminActionRes
       });
     }
     revalidatePath("/admin/delivery");
+    revalidatePath("/admin/settings/shipping");
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "שמירת משלוח נכשלה");
@@ -922,6 +967,7 @@ export async function deleteDeliveryOption(formData: FormData): Promise<AdminAct
       entityId: id,
     });
     revalidatePath("/admin/delivery");
+    revalidatePath("/admin/settings/shipping");
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "מחיקת אפשרות משלוח נכשלה");
@@ -1328,6 +1374,7 @@ export async function savePickupEnabled(formData: FormData): Promise<AdminAction
       metadata: { pickupEnabled },
     });
     revalidatePath("/admin/delivery");
+    revalidatePath("/admin/settings/shipping");
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "עדכון איסוף נכשל");
@@ -1392,9 +1439,10 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
 
     // If admin marks order as PAID, reduce inventory immediately.
     if (prev?.paymentStatus !== "PAID" && paymentStatus === "PAID") {
-      // Make sure the order is PAID/PAID in DB (already done above), then reduce inventory.
       const { reduceInventoryAfterPayment } = await import("@/lib/inventory/updateInventory");
       await reduceInventoryAfterPayment(id);
+      const { notifyOrderPaidEmailsAsync } = await import("@/lib/notifications");
+      notifyOrderPaidEmailsAsync(id);
     }
     await logAdminAction({
       userId,
@@ -1408,12 +1456,13 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
       fulfillmentOk && prev?.fulfillmentStatus !== fulfillmentRaw;
     const cancelledNow = prev?.status !== "CANCELLED" && status === "CANCELLED";
     if (cancelledNow || fulfillmentChanged) {
-      const { queueEmail, sendOrderStatusEmail } = await import("@/lib/email/email-service");
+      const { notifyOrderStatusChangeAsync } = await import("@/lib/notifications");
       const statusKey = cancelledNow ? "CANCELLED" : fulfillmentRaw;
-      queueEmail(() => sendOrderStatusEmail(id, statusKey));
+      notifyOrderStatusChangeAsync(id, statusKey);
     }
 
     revalidatePath("/admin/orders");
+    revalidatePath(`/admin/orders/${id}`);
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "עדכון הזמנה נכשל");

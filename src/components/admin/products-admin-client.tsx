@@ -6,6 +6,12 @@ import { AssetImg } from "@/components/asset-img";
 import { AdminModal } from "@/components/admin/admin-modal";
 import { AdminSpinner } from "@/components/admin/admin-spinner";
 import { ProductImagesSection } from "@/components/admin/product-images-section";
+import {
+  ProductVariantsSection,
+  copyProductImagesToColorVariants,
+  type VariantGroup,
+  type VariantOption,
+} from "@/components/admin/product-variants-section";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import type { GalleryDisplayConfig } from "@/lib/product-gallery-display";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
@@ -22,17 +28,6 @@ import {
 } from "@/lib/smartphone-catalog";
 
 type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
-type VariantOption = {
-  id: string;
-  value: string;
-  priceAdd: number;
-  stock: number | null;
-  sku: string | null;
-  image: string | null;
-  isDefault: boolean;
-  sortOrder: number;
-};
-type VariantGroup = { id: string; name: string; sortOrder: number; options: VariantOption[] };
 type RelatedProduct = { id: string; name_he: string; name_ar: string; name_en: string; price: number; image: string | null; sortOrder: number };
 export type ProductRow = {
   id: string;
@@ -585,309 +580,23 @@ function ProductForm({
 
       <ProductImagesSection
         product={product ? { id: product.id, images: product.images } : null}
-        galleryDisplay={galleryDisplay}
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         onRefresh={onRefresh}
+        onCopyToColors={
+          product && product.images.length > 0
+            ? () => setVariantGroups((prev) => copyProductImagesToColorVariants(prev, product.images))
+            : undefined
+        }
       />
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">אפשרויות מוצר</div>
-            <div className="mt-0.5 text-xs text-slate-500">קבוצות דינמיות (צבע, נפח, RAM ועוד) עם תוספת מחיר לכל אפשרות.</div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900 hover:bg-blue-100"
-              onClick={() => setVariantGroups(adminVariantGroupsFromPreset("apple"))}
-            >
-              📱 תבנית Apple
-            </button>
-            <button
-              type="button"
-              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900 hover:bg-violet-100"
-              onClick={() => setVariantGroups(adminVariantGroupsFromPreset("samsung"))}
-            >
-              📱 תבנית Samsung
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
-              onClick={() =>
-                setVariantGroups((prev) => [
-                  ...prev,
-                  {
-                    id: `new-group-${Date.now()}`,
-                    name: "",
-                    sortOrder: prev.length,
-                    options: [],
-                  },
-                ])
-              }
-            >
-              + הוסף קבוצת אפשרויות
-            </button>
-          </div>
-        </div>
-
-        {variantGroups.length === 0 ? (
-          <div className="mt-4 rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
-            אין אפשרויות מוגדרות. הוסיפו קבוצה כדי לאפשר וריאציות ומחיר דינמי.
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-4">
-            {variantGroups.map((g) => (
-              <div key={g.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="text-xs font-medium text-slate-700">
-                    שם קבוצה
-                    <input
-                      value={g.name}
-                      onChange={(e) =>
-                        setVariantGroups((prev) =>
-                          prev.map((x) => (x.id === g.id ? { ...x, name: e.target.value } : x)),
-                        )
-                      }
-                      placeholder="לדוגמה: צבע / נפח / RAM"
-                      className="mt-1 w-64 max-w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                      onClick={() =>
-                        setVariantGroups((prev) =>
-                          prev.map((x) =>
-                            x.id === g.id
-                              ? {
-                                  ...x,
-                                  options: [
-                                    ...x.options,
-                                    {
-                                      id: `new-opt-${Date.now()}`,
-                                      value: "",
-                                      priceAdd: 0,
-                                      stock: null,
-                                      sku: null,
-                                      image: null,
-                                      isDefault: x.options.length === 0,
-                                      sortOrder: x.options.length,
-                                    },
-                                  ],
-                                }
-                              : x,
-                          ),
-                        )
-                      }
-                    >
-                      ➕ הוסף אפשרות
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs text-red-600 hover:underline"
-                      onClick={() => setVariantGroups((prev) => prev.filter((x) => x.id !== g.id))}
-                    >
-                      מחק קבוצה
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        <th className="px-3 py-2">ערך</th>
-                        <th className="px-3 py-2">תוספת מחיר</th>
-                        <th className="px-3 py-2">מלאי</th>
-                        <th className="px-3 py-2">SKU</th>
-                        <th className="px-3 py-2">תמונה</th>
-                        <th className="px-3 py-2">ברירת מחדל</th>
-                        <th className="px-3 py-2 text-end"> </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.options.map((o) => (
-                        <tr key={o.id} className="border-t border-slate-100">
-                          <td className="px-3 py-2">
-                            <input
-                              value={o.value}
-                              onChange={(e) =>
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id
-                                      ? x
-                                      : {
-                                          ...x,
-                                          options: x.options.map((oo) => (oo.id === o.id ? { ...oo, value: e.target.value } : oo)),
-                                        },
-                                  ),
-                                )
-                              }
-                              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
-                              placeholder="לדוגמה: שחור / 256GB"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={Number.isFinite(o.priceAdd) ? o.priceAdd : 0}
-                              onChange={(e) => {
-                                const v = Number(e.target.value || 0);
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id
-                                      ? x
-                                      : { ...x, options: x.options.map((oo) => (oo.id === o.id ? { ...oo, priceAdd: v } : oo)) },
-                                  ),
-                                );
-                              }}
-                              type="number"
-                              step="0.01"
-                              className="w-24 rounded-md border border-slate-300 px-2 py-1 text-xs tabular-nums"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={o.stock ?? ""}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                const v = raw.trim() === "" ? null : Number(raw);
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id ? x : { ...x, options: x.options.map((oo) => (oo.id === o.id ? { ...oo, stock: v } : oo)) },
-                                  ),
-                                );
-                              }}
-                              type="number"
-                              className="w-20 rounded-md border border-slate-300 px-2 py-1 text-xs tabular-nums"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={o.sku ?? ""}
-                              onChange={(e) =>
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id ? x : { ...x, options: x.options.map((oo) => (oo.id === o.id ? { ...oo, sku: e.target.value || null } : oo)) },
-                                  ),
-                                )
-                              }
-                              className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs font-mono"
-                              placeholder="אופציונלי"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <div className="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-slate-50">
-                                <AssetImg path={o.image} alt="" className="h-full w-full object-cover" />
-                              </div>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="max-w-[180px] text-[11px]"
-                                onChange={async (e) => {
-                                  const input = e.currentTarget;
-                                  const f = input.files?.[0] ?? null;
-                                  if (!f) return;
-                                  setVariantGroups((prev) =>
-                                    prev.map((x) =>
-                                      x.id !== g.id
-                                        ? x
-                                        : {
-                                            ...x,
-                                            options: x.options.map((oo) => (oo.id === o.id ? { ...oo, uploading: true } : oo)),
-                                          },
-                                    ),
-                                  );
-                                  try {
-                                    const path = await uploadAdminAsset(f, "products", {
-                                      entityId: product?.id ?? "new",
-                                      originalName: f.name,
-                                    });
-                                    setVariantGroups((prev) =>
-                                      prev.map((x) =>
-                                        x.id !== g.id
-                                          ? x
-                                          : {
-                                              ...x,
-                                              options: x.options.map((oo) => (oo.id === o.id ? { ...oo, image: path, uploading: false } : oo)),
-                                            },
-                                      ),
-                                    );
-                                  } catch {
-                                    setVariantGroups((prev) =>
-                                      prev.map((x) =>
-                                        x.id !== g.id
-                                          ? x
-                                          : {
-                                              ...x,
-                                              options: x.options.map((oo) => (oo.id === o.id ? { ...oo, uploading: false } : oo)),
-                                            },
-                                      ),
-                                    );
-                                  } finally {
-                                    // The input may be unmounted after state updates; guard access.
-                                    try {
-                                      input.value = "";
-                                    } catch {
-                                      // ignore
-                                    }
-                                  }
-                                }}
-                              />
-                              {o.uploading ? <span className="text-[10px] text-slate-500">מעלה…</span> : null}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="radio"
-                              name={`default-${g.id}`}
-                              checked={o.isDefault}
-                              onChange={() =>
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id
-                                      ? x
-                                      : { ...x, options: x.options.map((oo) => ({ ...oo, isDefault: oo.id === o.id })) },
-                                  ),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-end">
-                            <button
-                              type="button"
-                              className="text-[11px] text-red-600 hover:underline"
-                              onClick={() =>
-                                setVariantGroups((prev) =>
-                                  prev.map((x) =>
-                                    x.id !== g.id ? x : { ...x, options: x.options.filter((oo) => oo.id !== o.id).map((oo, idx) => ({ ...oo, sortOrder: idx })) },
-                                  ),
-                                )
-                              }
-                            >
-                              מחק
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {g.options.length === 0 && (
-                        <tr className="border-t border-slate-100">
-                          <td className="px-3 py-3 text-center text-xs text-slate-500" colSpan={7}>
-                            אין אפשרויות בקבוצה.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <ProductVariantsSection
+        variantGroups={variantGroups}
+        setVariantGroups={setVariantGroups}
+        productImages={product?.images ?? []}
+        productId={product?.id}
+        onApplyPreset={(brand) => setVariantGroups(adminVariantGroupsFromPreset(brand))}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -1,13 +1,19 @@
 import "server-only";
 
-import { getAppUrl } from "@/lib/app-url";
 import { prisma } from "@/lib/prisma";
 import { getEmailConfig, isEmailConfigured } from "@/lib/email/config";
+import { loadOrderEmailPayload } from "@/lib/email/order-email-data";
 import { logEmailFailure, logEmailSkipped, logEmailSuccess } from "@/lib/email/logger";
+import { isOrderPaidForEmail } from "@/lib/payments/post-payment-emails";
+import { adminOrderUrl, getStoreUrl } from "@/lib/app-url";
+import { loadStoreEmailBrand, resolveAdminOrderEmail } from "@/lib/email/store-branding";
 import { getMailTransporter } from "@/lib/email/transporter";
+import { renderContactAutoReplyEmail } from "@/lib/email/templates/contact-auto-reply";
 import { renderContactLeadEmail } from "@/lib/email/templates/contact-lead";
-import { renderNewOrderEmail, type OrderEmailLine } from "@/lib/email/templates/new-order";
+import { renderNewOrderEmail } from "@/lib/email/templates/new-order";
+import { renderOrderConfirmationEmail } from "@/lib/email/templates/order-confirmation";
 import { renderOrderStatusEmail } from "@/lib/email/templates/order-status";
+import { renderPasswordResetEmail } from "@/lib/email/templates/password-reset";
 import { renderWelcomeEmail } from "@/lib/email/templates/welcome";
 import { wrapEmailHtml } from "@/lib/email/templates/layout";
 
@@ -39,121 +45,160 @@ async function sendMail(opts: SendOpts): Promise<boolean> {
   }
 }
 
-export async function sendContactLeadEmail(data: {
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  message: string;
-  createdAt: Date;
-}): Promise<void> {
+export async function sendContactLeadEmail(
+  storeId: string,
+  data: {
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    message: string;
+    createdAt: Date;
+  },
+): Promise<void> {
+  const brand = await loadStoreEmailBrand(storeId);
   const cfg = getEmailConfig();
-  if (!cfg.contactReceiver) {
+  const to = resolveAdminOrderEmail(brand) || cfg.contactReceiver;
+  if (!to) {
     logEmailSkipped("contact_lead", "no_contact_receiver");
     return;
   }
-  const { subject, html } = renderContactLeadEmail(data);
-  await sendMail({ to: cfg.contactReceiver, subject, html, type: "contact_lead" });
+  const { subject, html } = renderContactLeadEmail({ brand, ...data });
+  await sendMail({ to, subject, html, type: "contact_lead" });
+}
+
+export async function sendContactAutoReplyEmail(
+  storeId: string,
+  data: { name: string; email: string },
+): Promise<void> {
+  if (!data.email?.trim()) return;
+  const brand = await loadStoreEmailBrand(storeId);
+  const { subject, html } = renderContactAutoReplyEmail({ brand, name: data.name });
+  await sendMail({ to: data.email.trim(), subject, html, type: "contact_auto_reply" });
+}
+
+export async function sendOrderConfirmationEmail(orderId: string): Promise<void> {
+  if (!(await isOrderPaidForEmail(orderId))) {
+    logEmailSkipped("order_confirmation", "payment_not_paid");
+    return;
+  }
+  const payload = await loadOrderEmailPayload(orderId);
+  if (!payload?.order.customerEmail) return;
+
+  const brand = await loadStoreEmailBrand(payload.order.storeId);
+  const { subject, html } = renderOrderConfirmationEmail({
+    brand,
+    order: payload.order,
+    items: payload.items,
+    currency: payload.currency,
+    paymentLabel: payload.paymentLabel,
+    statusLabel: payload.statusLabel,
+  });
+
+  await sendMail({
+    to: payload.order.customerEmail,
+    subject,
+    html,
+    type: "order_confirmation",
+  });
 }
 
 export async function sendNewOrderEmail(orderId: string): Promise<void> {
-  const cfg = getEmailConfig();
-  if (!cfg.adminOrderReceiver) {
+  if (!(await isOrderPaidForEmail(orderId))) {
+    logEmailSkipped("new_order", "payment_not_paid");
+    return;
+  }
+  const payload = await loadOrderEmailPayload(orderId);
+  if (!payload) return;
+
+  const brand = await loadStoreEmailBrand(payload.order.storeId);
+  const adminTo = resolveAdminOrderEmail(brand);
+  if (!adminTo) {
     logEmailSkipped("new_order", "no_admin_receiver");
     return;
   }
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true },
-  });
-  if (!order) return;
 
-  const variantIds = order.items.flatMap((i) =>
-    Array.isArray(i.variantOptionIds) ? (i.variantOptionIds as string[]) : [],
-  );
-  const variantOpts =
-    variantIds.length > 0
-      ? await prisma.productVariantOption.findMany({
-          where: { id: { in: variantIds } },
-          include: { group: true },
-        })
-      : [];
-  const variantById = new Map(variantOpts.map((o) => [o.id, o]));
-
-  const items: OrderEmailLine[] = order.items.map((item) => {
-    const ids = Array.isArray(item.variantOptionIds) ? (item.variantOptionIds as string[]) : [];
-    const variantParts = ids
-      .map((id) => {
-        const o = variantById.get(id);
-        return o ? `${o.group.name}: ${o.value}` : null;
-      })
-      .filter(Boolean);
-    return {
-      name: item.productName,
-      variant: variantParts.length ? variantParts.join(" · ") : null,
-      quantity: item.quantity,
-      unitPrice: Number(item.unitPrice),
-      lineTotal: Number(item.totalPrice),
-      imageUrl: item.productImage,
-    };
-  });
-
-  const settings = await prisma.storeSettings.findUnique({ where: { storeId: order.storeId } });
-  const currency = settings?.currency ?? "ILS";
-  const paymentMethod =
-    order.paymentStatus === "PAID"
-      ? "שולם"
-      : order.paymentStatus === "FAILED"
-        ? "נכשל"
-        : "ממתין לתשלום";
-
+  const order = payload.order;
   const { subject, html } = renderNewOrderEmail({
+    brand,
     orderNumber: order.orderNumber,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     customerEmail: order.customerEmail,
-    city: order.address,
-    paymentMethod,
+    address: order.address,
+    paymentMethod: payload.paymentLabel,
     deliveryMethod: order.deliveryOptionName,
     notes: order.notes,
+    subtotal: Number(order.subtotal),
+    deliveryPrice: Number(order.deliveryPrice),
+    discountAmount: Number(order.discountAmount),
+    pointsDiscount: Number(order.pointsDiscountAmount),
     total: Number(order.total),
-    currency,
-    items,
-    adminUrl: `${getAppUrl()}/admin/orders/${order.id}`,
+    currency: payload.currency,
+    items: payload.items,
+    adminUrl: adminOrderUrl(order.id),
   });
 
-  await sendMail({ to: cfg.adminOrderReceiver, subject, html, type: "new_order" });
+  await sendMail({ to: adminTo, subject, html, type: "new_order" });
 }
 
-export async function sendOrderStatusEmail(orderId: string, statusKey: string): Promise<void> {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
-  if (!order?.customerEmail) return;
+export async function sendOrderStatusEmail(
+  orderId: string,
+  statusKey: string,
+  extras?: { trackingNumber?: string | null; carrier?: string | null },
+): Promise<void> {
+  const payload = await loadOrderEmailPayload(orderId);
+  if (!payload?.order.customerEmail) return;
 
+  const brand = await loadStoreEmailBrand(payload.order.storeId);
   const { subject, html } = renderOrderStatusEmail({
-    customerName: order.customerName,
-    orderNumber: order.orderNumber,
+    brand,
+    customerName: payload.order.customerName,
+    orderNumber: payload.order.orderNumber,
+    orderId: payload.order.id,
     statusKey,
-    statusLabel: statusKey,
-    total: Number(order.total),
+    statusLabel: payload.statusLabel,
+    total: Number(payload.order.total),
+    currency: payload.currency,
+    trackingNumber: extras?.trackingNumber,
+    carrier: extras?.carrier,
   });
 
-  await sendMail({ to: order.customerEmail, subject, html, type: "order_status" });
+  await sendMail({ to: payload.order.customerEmail, subject, html, type: "order_status" });
 }
 
-export async function sendCustomerWelcomeEmail(data: { name: string; email: string }): Promise<void> {
+export async function sendCustomerWelcomeEmail(storeId: string, data: { name: string; email: string }): Promise<void> {
+  const brand = await loadStoreEmailBrand(storeId);
   const { subject, html } = renderWelcomeEmail({
+    brand,
     name: data.name,
-    shopUrl: `${getAppUrl()}/products`,
+    shopUrl: `${getStoreUrl()}/products`,
   });
   await sendMail({ to: data.email, subject, html, type: "welcome" });
 }
 
+export async function sendPasswordResetEmail(
+  storeId: string,
+  data: { name: string; email: string; resetUrl: string },
+): Promise<void> {
+  const brand = await loadStoreEmailBrand(storeId);
+  const { subject, html } = renderPasswordResetEmail({ brand, name: data.name, resetUrl: data.resetUrl });
+  await sendMail({ to: data.email, subject, html, type: "password_reset" });
+}
+
 export async function sendAdminNotificationEmail(data: {
+  storeId?: string;
   subject: string;
   title: string;
   bodyHtml: string;
 }): Promise<void> {
   const cfg = getEmailConfig();
-  const to = cfg.contactReceiver || cfg.adminOrderReceiver;
+  let to = cfg.contactReceiver || cfg.adminOrderReceiver;
+  let brandName = cfg.fromName;
+  if (data.storeId) {
+    const brand = await loadStoreEmailBrand(data.storeId);
+    to = resolveAdminOrderEmail(brand) || to;
+    brandName = brand.name;
+  }
   if (!to) {
     logEmailSkipped("admin_notification", "no_receiver");
     return;
@@ -161,7 +206,9 @@ export async function sendAdminNotificationEmail(data: {
   await sendMail({
     to,
     subject: data.subject,
-    html: wrapEmailHtml(data.title, data.bodyHtml),
+    html: wrapEmailHtml(data.title, data.bodyHtml, {
+      brand: { name: brandName ?? "Store" },
+    }),
     type: "admin_notification",
   });
 }

@@ -7,6 +7,7 @@ import { ProductGallery } from "@/components/storefront/product-gallery";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
 import { RelatedProductsModal } from "@/components/storefront/related-products-modal";
+import { isColorVariantGroup } from "@/lib/variant-group-kind";
 
 type VariantOption = {
   id: string;
@@ -73,7 +74,15 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
     const add = selectedOptions.reduce((s, o) => s + (Number.isFinite(o.priceAdd) ? o.priceAdd : 0), 0);
     return Math.round((product.price + add) * 100) / 100;
   }, [product.price, selectedOptions]);
-  const variantHeroImage = useMemo(() => selectedOptions.find((o) => o.image)?.image ?? null, [selectedOptions]);
+  const variantHeroImage = useMemo(() => {
+    const colorGroup = product.variantGroups?.find((g) => isColorVariantGroup(g.name));
+    if (colorGroup) {
+      const selectedId = selectedByGroup[colorGroup.id];
+      const colorOpt = colorGroup.options.find((o) => o.id === selectedId);
+      if (colorOpt?.image) return colorOpt.image;
+    }
+    return selectedOptions.find((o) => o.image)?.image ?? null;
+  }, [product.variantGroups, selectedByGroup, selectedOptions]);
   const specs = useMemo(
     () =>
       [

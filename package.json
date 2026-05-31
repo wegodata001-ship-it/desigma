@@ -13,6 +13,8 @@
     "demo:product-images": "python scripts/generate-product-png-images.py",
     "db:sync-admin-password": "tsx scripts/sync-admin-password.ts",
     "legal:publish": "tsx scripts/publish-all-legal.ts",
+    "shipping:seed": "tsx scripts/seed-shipping-methods.ts",
+    "qa:order-email-links": "tsx scripts/qa-order-email-links.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

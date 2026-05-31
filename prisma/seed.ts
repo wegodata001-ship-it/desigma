@@ -1,8 +1,9 @@
-import { CouponType, DeliveryType, PrismaClient, StoreStatus, UserRole } from "@prisma/client";
+import { CouponType, PrismaClient, StoreStatus, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
 import { STORAGE_BUCKET } from "../src/lib/storage";
 import { seedStorePreset } from "../src/lib/presets";
+import { DEFAULT_SHIPPING_METHODS } from "../src/lib/shipping/delivery-behavior";
 import { defaultLegalFlat } from "../src/lib/legal-defaults";
 
 const prisma = new PrismaClient();
@@ -140,48 +141,19 @@ async function main() {
 
   await prisma.deliveryOption.deleteMany({ where: { storeId: STORE_ID } });
   await prisma.deliveryOption.createMany({
-    data: [
-      {
-        storeId: STORE_ID,
-        name_he: "איסוף מהחנות",
-        name_ar: "استلام من المتجر",
-        name_en: "Pickup from store",
-        type: DeliveryType.PICKUP,
-        price: 0,
-        active: true,
-        sortOrder: 1,
-      },
-      {
-        storeId: STORE_ID,
-        name_he: "משלוח צפון",
-        name_ar: "شحن شمال",
-        name_en: "Shipping North",
-        type: DeliveryType.SHIPPING,
-        price: 20,
-        active: true,
-        sortOrder: 2,
-      },
-      {
-        storeId: STORE_ID,
-        name_he: "משלוח דרום",
-        name_ar: "شحن جنوب",
-        name_en: "Shipping South",
-        type: DeliveryType.SHIPPING,
-        price: 50,
-        active: true,
-        sortOrder: 3,
-      },
-      {
-        storeId: STORE_ID,
-        name_he: "משלוח אזורים מיוחדים",
-        name_ar: "شحن مناطق خاصة",
-        name_en: "Shipping special areas",
-        type: DeliveryType.SHIPPING,
-        price: 80,
-        active: true,
-        sortOrder: 4,
-      },
-    ],
+    data: DEFAULT_SHIPPING_METHODS.map((m) => ({
+      storeId: STORE_ID,
+      name_he: m.name_he,
+      name_ar: m.name_ar,
+      name_en: m.name_en,
+      type: m.type,
+      eta_he: m.eta_he,
+      eta_ar: m.eta_ar,
+      eta_en: m.eta_en,
+      price: m.price,
+      active: true,
+      sortOrder: m.sortOrder,
+    })),
   });
 
   await prisma.coupon.upsert({

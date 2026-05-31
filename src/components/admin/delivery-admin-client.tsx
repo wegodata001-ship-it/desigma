@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { AdminModal } from "@/components/admin/admin-modal";
@@ -10,24 +11,56 @@ import {
   savePickupEnabled,
   upsertDelivery,
 } from "@/app/admin/actions";
+import type { DeliveryType } from "@prisma/client";
 
 export type DeliveryRow = {
   id: string;
   name_he: string;
   name_ar: string;
   name_en: string;
-  type: "PICKUP" | "SHIPPING";
+  type: DeliveryType;
   price: number;
+  eta_he: string | null;
+  eta_ar: string | null;
+  eta_en: string | null;
   active: boolean;
   sortOrder: number;
 };
 
+const DELIVERY_TYPES: DeliveryType[] = [
+  "HOME",
+  "EXPRESS",
+  "PICKUP_POINT",
+  "PICKUP",
+  "INTERNATIONAL",
+  "SHIPPING",
+];
+
+function typeLabel(type: DeliveryType, t: (k: string) => string): string {
+  switch (type) {
+    case "HOME":
+      return t("deliveryTypeHome");
+    case "EXPRESS":
+      return t("deliveryTypeExpress");
+    case "PICKUP_POINT":
+      return t("deliveryTypePickupPoint");
+    case "PICKUP":
+      return t("pickupOption");
+    case "INTERNATIONAL":
+      return t("deliveryTypeInternational");
+    default:
+      return t("shippingOption");
+  }
+}
+
 export function DeliveryAdminClient({
   pickupEnabled,
   options,
+  settingsContext = false,
 }: {
   pickupEnabled: boolean;
   options: DeliveryRow[];
+  settingsContext?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -55,7 +88,19 @@ export function DeliveryAdminClient({
     <div>
       {toast && <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm">{toast}</div>}
 
-      <h1 className="text-xl font-semibold text-slate-900">{t("deliverySettings")}</h1>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">
+            {settingsContext ? t("shippingMethodsTitle") : t("deliverySettings")}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">{t("shippingMethodsHint")}</p>
+        </div>
+        {settingsContext && (
+          <Link href="/admin/settings" className="text-sm text-sky-600 hover:underline">
+            ← {t("storeSettings")}
+          </Link>
+        )}
+      </div>
 
       <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">{t("pickup")}</h2>
@@ -90,37 +135,47 @@ export function DeliveryAdminClient({
           </button>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-sm">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                <th className="px-4 py-3">{t("name")}</th>
-                <th className="px-4 py-3">{t("price")}</th>
-                <th className="px-4 py-3">{t("type")}</th>
+                <th className="px-4 py-3 text-start">{t("name")}</th>
+                <th className="px-4 py-3">{t("deliveryPriceLabel")}</th>
+                <th className="px-4 py-3">{t("deliveryEtaLabel")}</th>
+                <th className="px-4 py-3">{t("deliveryTypeLabel")}</th>
+                <th className="px-4 py-3">{t("displayOrder")}</th>
                 <th className="px-4 py-3">{t("active")}</th>
                 <th className="px-4 py-3 text-end">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
-              {options.map((o) => (
-                <tr key={o.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2">{o.name_he}</td>
-                  <td className="px-4 py-2 tabular-nums">₪{Number(o.price).toFixed(2)}</td>
-                  <td className="px-4 py-2">
-                    {o.type === "PICKUP" ? t("pickupOption") : t("shippingOption")}
-                  </td>
-                  <td className="px-4 py-2">{o.active ? t("yes") : t("no")}</td>
-                  <td className="px-4 py-2 text-end">
-                    <button type="button" className="text-blue-600 hover:underline" onClick={() => setEdit(o)}>
-                      {t("edit")}
-                    </button>
-                    <span className="mx-2 text-slate-300">|</span>
-                    <button type="button" className="text-red-600 hover:underline" onClick={() => setDelId(o.id)}>
-                      {t("delete")}
-                    </button>
+              {options.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    {t("shippingMethodsEmpty")}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                options.map((o) => (
+                  <tr key={o.id} className="border-b border-slate-100">
+                    <td className="px-4 py-2 font-medium text-slate-900">{o.name_he}</td>
+                    <td className="px-4 py-2 tabular-nums">₪{Number(o.price).toFixed(2)}</td>
+                    <td className="px-4 py-2 text-slate-600">{o.eta_he || "—"}</td>
+                    <td className="px-4 py-2 text-slate-600">{typeLabel(o.type, t)}</td>
+                    <td className="px-4 py-2 tabular-nums">{o.sortOrder}</td>
+                    <td className="px-4 py-2">{o.active ? t("yes") : t("no")}</td>
+                    <td className="px-4 py-2 text-end whitespace-nowrap">
+                      <button type="button" className="text-blue-600 hover:underline" onClick={() => setEdit(o)}>
+                        {t("edit")}
+                      </button>
+                      <span className="mx-2 text-slate-300">|</span>
+                      <button type="button" className="text-red-600 hover:underline" onClick={() => setDelId(o.id)}>
+                        {t("delete")}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -218,14 +273,29 @@ function DeliveryForm({
       </label>
       <label className="text-xs font-medium">
         {t("deliveryTypeLabel")}
-        <select name="type" required defaultValue={row?.type ?? "SHIPPING"} className="mt-1 w-full rounded border px-2 py-1.5 text-sm">
-          <option value="SHIPPING">{t("shippingOption")}</option>
-          <option value="PICKUP">{t("pickupOption")}</option>
+        <select name="type" required defaultValue={row?.type ?? "HOME"} className="mt-1 w-full rounded border px-2 py-1.5 text-sm">
+          {DELIVERY_TYPES.map((dt) => (
+            <option key={dt} value={dt}>
+              {typeLabel(dt, t)}
+            </option>
+          ))}
         </select>
       </label>
       <label className="text-xs font-medium">
         {t("deliveryPriceLabel")}
         <input name="price" type="number" step="0.01" required defaultValue={row?.price ?? 0} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+      </label>
+      <label className="text-xs font-medium">
+        {t("deliveryEtaHe")}
+        <input name="eta_he" defaultValue={row?.eta_he ?? ""} placeholder="3–7 ימי עסקים" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+      </label>
+      <label className="text-xs font-medium">
+        {t("deliveryEtaAr")}
+        <input name="eta_ar" defaultValue={row?.eta_ar ?? ""} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+      </label>
+      <label className="text-xs font-medium">
+        {t("deliveryEtaEn")}
+        <input name="eta_en" defaultValue={row?.eta_en ?? ""} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
       </label>
       <label className="text-xs font-medium">
         {t("displayOrder")}

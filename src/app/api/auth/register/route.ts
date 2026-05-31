@@ -9,6 +9,7 @@ import { getAppUrl } from "@/lib/app-url";
 import { clientIpFromRequest, rateLimit } from "@/lib/rate-limit";
 import { queueEmail, sendCustomerWelcomeEmail } from "@/lib/email/email-service";
 import { strongPasswordRegex } from "@/lib/password-strength";
+import { EMAIL_MISMATCH_MESSAGE } from "@/lib/email-confirm-validation";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ const Schema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["confirmEmail"],
-      message: "האימיילים אינם תואמים",
+      message: EMAIL_MISMATCH_MESSAGE,
     });
   }
   if (data.password !== data.confirmPassword) {
@@ -135,7 +136,7 @@ export async function POST(req: Request) {
     ? `${appUrl}/api/auth/verify-email?token=${encodeURIComponent(verification.token)}`
     : null;
 
-  queueEmail(() => sendCustomerWelcomeEmail({ name: user.name, email: user.email }));
+  queueEmail(() => sendCustomerWelcomeEmail(storeId, { name: user.name, email: user.email }));
 
   return NextResponse.json({
     ok: true,

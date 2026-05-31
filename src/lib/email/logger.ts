@@ -4,9 +4,12 @@ import { runtimeLog } from "@/lib/runtime-log/server";
 
 export type EmailLogType =
   | "contact_lead"
+  | "contact_auto_reply"
   | "new_order"
+  | "order_confirmation"
   | "order_status"
   | "welcome"
+  | "password_reset"
   | "admin_notification"
   | "generic";
 

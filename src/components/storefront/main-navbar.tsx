@@ -25,13 +25,13 @@ export function MainNavbar({
   role: UserRole | null;
 }) {
   const router = useRouter();
-  const { items, lastAddedAt } = useCart();
+  const { cartCount, lastAddedAt } = useCart();
   const { t, dir } = useStoreI18n();
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cartBounce, setCartBounce] = useState(false);
-  const count = items.reduce((n, i) => n + i.quantity, 0);
+  const count = cartCount;
 
   useEffect(() => {
     if (!lastAddedAt) return;

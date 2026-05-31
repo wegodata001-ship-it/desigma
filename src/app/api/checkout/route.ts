@@ -3,7 +3,6 @@ import { z } from "zod";
 import { DeliveryType, OrderPaymentStatus, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
-import { notifyNewOrderToOwnerAsync } from "@/lib/notifications";
 import { decodeSessionToken } from "@/lib/auth/session";
 import { cookies } from "next/headers";
 import {
@@ -12,28 +11,55 @@ import {
   computeTotal,
   snapshotDeliveryName,
 } from "@/lib/checkout/compute-order";
+import {
+  deliveryRequiresAddress,
+  deliveryUiBehavior,
+  formatStructuredAddress,
+} from "@/lib/shipping/delivery-behavior";
+import { isLinePurchasable, sanitizeCartLines } from "@/lib/cart/availability";
+import type { CartLine } from "@/lib/cart/types";
+import { loadCartProductsForStore } from "@/lib/cart/load-cart-products";
+import { EMAIL_MISMATCH_MESSAGE, normalizeEmail } from "@/lib/email-confirm-validation";
+import { ORDER_STATUS_AWAITING_PAYMENT } from "@/lib/orders/order-status-values";
 
 export const runtime = "nodejs";
 
-const Schema = z.object({
-  customerName: z.string().min(1),
-  customerEmail: z.string().email(),
-  customerPhone: z.string().min(1),
-  deliveryOptionId: z.string(),
-  address: z.string().optional(),
-  notes: z.string().optional(),
-  couponCode: z.string().optional(),
-  redeemPoints: z.number().int().min(0).optional(),
-  items: z
-    .array(
-      z.object({
-        productId: z.string(),
-        quantity: z.number().int().positive(),
-        optionIds: z.array(z.string()).optional(),
-      }),
-    )
-    .min(1),
-});
+const Schema = z
+  .object({
+    customerName: z.string().min(1),
+    customerEmail: z.string().trim().min(1).email(),
+    confirmCustomerEmail: z.string().trim().min(1).email(),
+    customerPhone: z.string().min(1),
+    deliveryOptionId: z.string(),
+    address: z.string().optional(),
+    addressCity: z.string().optional(),
+    addressStreet: z.string().optional(),
+    addressHouseNumber: z.string().optional(),
+    addressApartment: z.string().optional(),
+    addressPostalCode: z.string().optional(),
+    pickupPointId: z.string().optional(),
+    notes: z.string().optional(),
+    couponCode: z.string().optional(),
+    redeemPoints: z.number().int().min(0).optional(),
+    items: z
+      .array(
+        z.object({
+          productId: z.string(),
+          quantity: z.number().int().positive(),
+          optionIds: z.array(z.string()).optional(),
+        }),
+      )
+      .min(1),
+  })
+  .superRefine((data, ctx) => {
+    if (normalizeEmail(data.customerEmail) !== normalizeEmail(data.confirmCustomerEmail)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmCustomerEmail"],
+        message: EMAIL_MISMATCH_MESSAGE,
+      });
+    }
+  });
 
 export async function POST(req: Request) {
   const storeId = STORE_ID;
@@ -46,45 +72,65 @@ export async function POST(req: Request) {
 
   const parsed = Schema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid checkout payload" }, { status: 400 });
+    const msg = parsed.error.issues[0]?.message ?? "Invalid checkout payload";
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
   const body = parsed.data;
+  const verifiedEmail = normalizeEmail(body.customerEmail);
   const jar = await cookies();
   const session = await decodeSessionToken(jar.get("session")?.value ?? "");
+
+  const cartInput: CartLine[] = body.items.map((i, idx) => ({
+    key: `checkout-${idx}`,
+    productId: i.productId,
+    quantity: i.quantity,
+    optionIds: i.optionIds ?? [],
+  }));
+
+  const productIds = Array.from(new Set(cartInput.map((i) => i.productId)));
+  const productsMap = await loadCartProductsForStore(storeId, productIds);
+  const { items: validCartLines } = sanitizeCartLines(cartInput, productsMap);
+
+  if (validCartLines.length !== cartInput.length) {
+    return NextResponse.json(
+      { error: "אחד או יותר מהמוצרים בעגלה אינם זמינים יותר. עדכנו את העגלה ונסו שוב." },
+      { status: 400 },
+    );
+  }
+
+  for (const line of validCartLines) {
+    const snapshot = productsMap.get(line.productId);
+    if (!isLinePurchasable(snapshot, line)) {
+      return NextResponse.json(
+        { error: "אין מספיק מלאי לאחד המוצרים בעגלה." },
+        { status: 400 },
+      );
+    }
+  }
 
   const products = await prisma.product.findMany({
     where: {
       storeId,
-      id: { in: body.items.map((i) => i.productId) },
+      id: { in: validCartLines.map((i) => i.productId) },
       active: true,
     },
   });
 
-  if (products.length !== body.items.length) {
-    return NextResponse.json({ error: "Some products are unavailable" }, { status: 400 });
+  if (products.length !== validCartLines.length) {
+    return NextResponse.json(
+      { error: "אחד או יותר מהמוצרים בעגלה אינם זמינים יותר. עדכנו את העגלה ונסו שוב." },
+      { status: 400 },
+    );
   }
 
   const byId = new Map(products.map((p) => [p.id, p]));
   type Line = { product: (typeof products)[number]; quantity: number; optionIds: string[] };
-  const lines: Line[] = body.items.map((i) => {
+  const lines: Line[] = validCartLines.map((i) => {
     const product = byId.get(i.productId);
     if (!product) throw new Error("missing product");
     return { product, quantity: i.quantity, optionIds: i.optionIds ?? [] };
   });
-
-  // Stock validation is enforced again inside the DB transaction (race-safe).
-  for (const { product, quantity } of lines) {
-    if (quantity <= 0) {
-      return NextResponse.json({ error: "Invalid quantity" }, { status: 400 });
-    }
-    if (product.stock < quantity) {
-      // Fast path for simple products; variant products are handled later.
-      // This is best-effort UX validation, not authoritative.
-      // Backend will re-check before decrement.
-      continue;
-    }
-  }
 
   const delivery = await prisma.deliveryOption.findFirst({
     where: { id: body.deliveryOptionId, storeId, active: true },
@@ -100,6 +146,31 @@ export async function POST(req: Request) {
     !storeSettings.pickupEnabled
   ) {
     return NextResponse.json({ error: "Pickup is not available" }, { status: 400 });
+  }
+
+  const behavior = deliveryUiBehavior(delivery.type);
+  let resolvedAddress = body.address?.trim() || null;
+  let resolvedNotes = body.notes?.trim() || null;
+
+  if (deliveryRequiresAddress(delivery.type)) {
+    if (body.addressCity?.trim() && body.addressStreet?.trim() && body.addressHouseNumber?.trim()) {
+      resolvedAddress = formatStructuredAddress({
+        city: body.addressCity,
+        street: body.addressStreet,
+        houseNumber: body.addressHouseNumber,
+        apartment: body.addressApartment ?? "",
+        postalCode: body.addressPostalCode ?? "",
+      });
+    }
+    if (!resolvedAddress) {
+      return NextResponse.json({ error: "יש למלא כתובת משלוח מלאה." }, { status: 400 });
+    }
+  } else if (behavior === "pickup_point") {
+    if (!body.pickupPointId?.trim()) {
+      return NextResponse.json({ error: "יש לבחור נקודת איסוף." }, { status: 400 });
+    }
+    const line = `נקודת איסוף: ${body.pickupPointId.trim()}`;
+    resolvedNotes = resolvedNotes ? `${resolvedNotes}\n${line}` : line;
   }
 
   if (
@@ -166,28 +237,31 @@ export async function POST(req: Request) {
 
   const deliveryName = snapshotDeliveryName(delivery, "he");
 
-  const { orderId, orderNumber } = await prisma.$transaction(
-    async (tx) => {
-      const settings = await tx.storeSettings.findUnique({ where: { storeId } });
-      if (!settings) {
-        throw new Error("Store settings missing");
-      }
-      const orderNumber = `${settings.orderNumberPrefix}-${settings.nextOrderNumber}`;
-      await tx.storeSettings.update({
-        where: { storeId },
-        data: { nextOrderNumber: { increment: 1 } },
-      });
+  let orderId: string;
+  let orderNumber: string;
+  try {
+    const created = await prisma.$transaction(
+      async (tx) => {
+        const settings = await tx.storeSettings.findUnique({ where: { storeId } });
+        if (!settings) {
+          throw new Error("Store settings missing");
+        }
+        const nextOrderNumber = `${settings.orderNumberPrefix}-${settings.nextOrderNumber}`;
+        await tx.storeSettings.update({
+          where: { storeId },
+          data: { nextOrderNumber: { increment: 1 } },
+        });
 
-      const order = await tx.order.create({
-        data: {
-          storeId,
-          orderNumber,
-          customerId: customerProfileId,
-          customerName: body.customerName,
-          customerEmail: body.customerEmail,
-          customerPhone: body.customerPhone,
-          status: OrderStatus.PENDING,
-          paymentStatus: OrderPaymentStatus.UNPAID,
+        const order = await tx.order.create({
+          data: {
+            storeId,
+            orderNumber: nextOrderNumber,
+            customerId: customerProfileId,
+            customerName: body.customerName,
+            customerEmail: verifiedEmail,
+            customerPhone: body.customerPhone,
+            status: ORDER_STATUS_AWAITING_PAYMENT,
+            paymentStatus: OrderPaymentStatus.UNPAID,
           subtotal: new Prisma.Decimal(subtotal),
           deliveryPrice: new Prisma.Decimal(deliveryPrice),
           discountAmount: new Prisma.Decimal(couponDiscount),
@@ -196,8 +270,8 @@ export async function POST(req: Request) {
           deliveryOptionName: deliveryName,
           deliveryOptionType: delivery.type as DeliveryType,
           deliveryOptionPrice: new Prisma.Decimal(deliveryPrice),
-          address: body.address ?? null,
-          notes: body.notes ?? null,
+          address: resolvedAddress,
+          notes: resolvedNotes,
           couponCode: appliedCoupon,
           loyaltyPointsRedeemed: pointsUsed,
         },
@@ -230,15 +304,22 @@ export async function POST(req: Request) {
       });
     }
 
-      return { orderId: order.id, orderNumber: order.orderNumber };
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-  );
+        return { orderId: order.id, orderNumber: order.orderNumber };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+    orderId = created.orderId;
+    orderNumber = created.orderNumber;
+  } catch (err) {
+    console.error("[checkout] order create failed", err);
+    return NextResponse.json(
+      { error: "לא ניתן ליצור הזמנה כרגע. נסו שוב בעוד רגע." },
+      { status: 500 },
+    );
+  }
 
   const currency =
     (await prisma.storeSettings.findUnique({ where: { storeId } }))?.currency ?? "ILS";
-
-  notifyNewOrderToOwnerAsync(orderId);
 
   return NextResponse.json({
     orderId,

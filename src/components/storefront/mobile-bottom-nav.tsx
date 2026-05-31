@@ -46,9 +46,9 @@ function NavItem({
 
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const { items } = useCart();
+  const { cartCount } = useCart();
   const { t } = useStoreI18n();
-  const count = items.reduce((n, i) => n + i.quantity, 0);
+  const count = cartCount;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/90 backdrop-blur md:hidden">

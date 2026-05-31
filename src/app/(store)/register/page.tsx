@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { EmailConfirmFields } from "@/components/storefront/email-confirm-fields";
+import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { validateEmailConfirmPair } from "@/lib/email-confirm-validation";
 import { evaluatePasswordRules, passwordMeetsAllRules } from "@/lib/password-strength";
 
 type RegisterForm = {
@@ -80,6 +83,7 @@ function PasswordChecklist({ password }: { password: string }) {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { t, dir } = useStoreI18n();
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
   const [form, setForm] = useState<RegisterForm>({
     name: "",
@@ -96,6 +100,31 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [verifyUrl, setVerifyUrl] = useState<string | null>(null);
 
+  const emailMessages = useMemo(
+    () => ({
+      emailRequired: t("emailRequired"),
+      emailInvalid: t("emailInvalid"),
+      confirmRequired: t("confirmEmailRequired"),
+      mismatch: t("emailMismatch"),
+    }),
+    [t],
+  );
+
+  const emailLabels = useMemo(
+    () => ({
+      email: t("emailLabel"),
+      confirmEmail: t("confirmEmailLabel"),
+      matchOk: t("emailsMatchOk"),
+      matchFail: t("emailsMatchFail"),
+    }),
+    [t],
+  );
+
+  const emailValidation = useMemo(
+    () => validateEmailConfirmPair(form.email, form.confirmEmail, emailMessages),
+    [form.email, form.confirmEmail, emailMessages],
+  );
+
   useEffect(() => {
     fetch("/api/store/public")
       .then((r) => r.json())
@@ -108,17 +137,12 @@ export default function RegisterPage() {
   function validate(values: RegisterForm): RegisterErrors {
     const errors: RegisterErrors = {};
     const name = values.name.trim();
-    const email = values.email.trim();
-    const confirmEmail = values.confirmEmail.trim();
     const phone = values.phone.trim();
+    const emailCheck = validateEmailConfirmPair(values.email, values.confirmEmail, emailMessages);
 
     if (!name) errors.name = "יש להזין שם מלא";
-    if (!email) errors.email = "יש להזין אימייל";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "יש להזין אימייל תקין";
-    if (!confirmEmail) errors.confirmEmail = "יש להזין אימייל לאימות";
-    else if (email && email.toLowerCase() !== confirmEmail.toLowerCase()) {
-      errors.confirmEmail = "האימיילים אינם תואמים";
-    }
+    if (emailCheck.emailError) errors.email = emailCheck.emailError;
+    if (emailCheck.confirmEmailError) errors.confirmEmail = emailCheck.confirmEmailError;
     if (!phone || !phoneRegex.test(phone)) errors.phone = "יש להזין מספר טלפון תקין";
     if (!values.password) errors.password = "יש להזין סיסמה";
     else if (!passwordMeetsAllRules(values.password)) {
@@ -153,7 +177,15 @@ export default function RegisterPage() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        name: form.name,
+        email: emailValidation.normalizedEmail,
+        confirmEmail: emailValidation.normalizedEmail,
+        phone: form.phone,
+        password: form.password,
+        confirmPassword: form.confirmPassword,
+        acceptTerms: form.acceptTerms,
+      }),
     });
     const data = await res.json();
     setIsSubmitting(false);
@@ -184,7 +216,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10 md:py-16">
+    <div dir={dir} className="mx-auto max-w-md px-4 py-10 md:py-16">
       <div className="ds-card-glass border-white/10 p-6 md:p-8">
         <h1 className="text-center text-2xl font-bold text-slate-50">הרשמת לקוחות</h1>
         <p className="mt-2 text-center text-sm text-slate-400">
@@ -202,32 +234,21 @@ export default function RegisterPage() {
             />
             {showFieldError("name") && <p className="mt-1 text-sm text-red-400">{errors.name}</p>}
           </div>
-          <div>
-            <label className="ds-label">אימייל</label>
-            <input
-              type="email"
-              required
-              className="ds-input mt-1.5"
-              value={form.email}
-              onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
-              onBlur={() => setTouched((s) => ({ ...s, email: true }))}
-            />
-            {showFieldError("email") && <p className="mt-1 text-sm text-red-400">{errors.email}</p>}
-          </div>
-          <div>
-            <label className="ds-label">אימות אימייל</label>
-            <input
-              type="email"
-              required
-              className="ds-input mt-1.5"
-              value={form.confirmEmail}
-              onChange={(e) => setForm((s) => ({ ...s, confirmEmail: e.target.value }))}
-              onBlur={() => setTouched((s) => ({ ...s, confirmEmail: true }))}
-            />
-            {showFieldError("confirmEmail") && (
-              <p className="mt-1 text-sm text-red-400">{errors.confirmEmail}</p>
-            )}
-          </div>
+          <EmailConfirmFields
+            dir={dir}
+            idPrefix="register"
+            email={form.email}
+            confirmEmail={form.confirmEmail}
+            onEmailChange={(value) => setForm((s) => ({ ...s, email: value }))}
+            onConfirmEmailChange={(value) => setForm((s) => ({ ...s, confirmEmail: value }))}
+            onEmailBlur={() => setTouched((s) => ({ ...s, email: true }))}
+            onConfirmBlur={() => setTouched((s) => ({ ...s, confirmEmail: true }))}
+            labels={emailLabels}
+            emailError={errors.email}
+            confirmEmailError={errors.confirmEmail}
+            showEmailError={showFieldError("email")}
+            showConfirmError={showFieldError("confirmEmail")}
+          />
           <div>
             <label className="ds-label">טלפון</label>
             <input
@@ -311,7 +332,7 @@ export default function RegisterPage() {
           )}
           <button
             type="submit"
-            disabled={isSubmitting || registrationOpen === null}
+            disabled={isSubmitting || registrationOpen === null || !emailValidation.isValid}
             className="flex w-full min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-medium text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSubmitting && (

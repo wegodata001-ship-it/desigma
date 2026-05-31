@@ -1,51 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { ProductImage } from "@/components/asset-img";
 import { useCart } from "@/components/cart-context";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
-
-type ProductRow = {
-  id: string;
-  name_he: string;
-  name_ar: string;
-  name_en: string;
-  price: number;
-  stock: number;
-  image: string | null;
-};
+import { availableStockForLine, isLinePurchasable, lineUnitPrice } from "@/lib/cart/availability";
 
 export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { items, setQuantity, removeItem } = useCart();
+  const router = useRouter();
+  const { items, products, subtotal, setQuantity, removeItem, validateForCheckout } = useCart();
   const { t, lang, dir } = useStoreI18n();
-  const [products, setProducts] = useState<Record<string, ProductRow>>({});
 
-  useEffect(() => {
-    if (items.length === 0) {
-      setProducts({});
-      return;
-    }
-    const ids = Array.from(new Set(items.map((i) => i.productId))).join(",");
-    fetch(`/api/products/bulk?ids=${ids}`)
-      .then((r) => r.json())
-      .then((d: { products: ProductRow[] }) => {
-        const map: Record<string, ProductRow> = {};
-        for (const p of d.products) map[p.id] = p;
-        setProducts(map);
-      })
-      .catch(() => setProducts({}));
-  }, [items]);
+  const displayItems = useMemo(
+    () =>
+      items.filter((line) => {
+        const p = products[line.productId];
+        return p && isLinePurchasable(p, line);
+      }),
+    [items, products],
+  );
 
-  const subtotal = useMemo(() => {
-    let sum = 0;
-    for (const it of items) {
-      const p = products[it.productId];
-      if (p) sum += p.price * it.quantity;
-    }
-    return sum;
-  }, [items, products]);
+  async function goCheckout() {
+    const check = await validateForCheckout();
+    if (!check.ok) return;
+    onClose();
+    router.push("/checkout");
+  }
 
   return (
     <>
@@ -66,20 +49,22 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
           </button>
         </div>
         <div className="h-[calc(100vh-180px)] space-y-3 overflow-y-auto pr-1">
-          {items.length === 0 && <p className="rounded-lg bg-zinc-900 p-3 text-sm text-zinc-400">{t("emptyCart")}</p>}
-          {items.map((line) => {
+          {displayItems.length === 0 && <p className="rounded-lg bg-zinc-900 p-3 text-sm text-zinc-400">{t("emptyCart")}</p>}
+          {displayItems.map((line) => {
             const p = products[line.productId];
             if (!p) return null;
             const name = pickLocalized(p, "name", lang);
+            const maxStock = availableStockForLine(p, line.optionIds);
+            const unit = lineUnitPrice(p, line.optionIds);
             return (
               <div key={line.key} className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3">
                 <div className="flex gap-3">
-                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0f1a_70%)]">
                     <ProductImage path={p.image} alt={name} className="h-full w-full" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{name}</p>
-                    <p className="text-sm text-orange-400">₪{p.price.toFixed(2)}</p>
+                    <p className="text-sm text-orange-400">₪{unit.toFixed(2)}</p>
                     <div className="mt-2 flex items-center gap-2">
                       <button
                         type="button"
@@ -91,7 +76,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
                       <span className="w-6 text-center text-sm">{line.quantity}</span>
                       <button
                         type="button"
-                        onClick={() => setQuantity(line.key, Math.min(p.stock, line.quantity + 1))}
+                        onClick={() => setQuantity(line.key, Math.min(maxStock, line.quantity + 1))}
                         className="h-7 w-7 rounded border border-zinc-700 text-zinc-200"
                       >
                         +
@@ -111,13 +96,14 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             <span className="text-zinc-300">{t("subtotal")}</span>
             <strong className="text-orange-400">₪{subtotal.toFixed(2)}</strong>
           </div>
-          <Link
-            href="/checkout"
-            onClick={onClose}
-            className="block rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3 text-center font-semibold text-white shadow-lg shadow-orange-700/20"
+          <button
+            type="button"
+            onClick={() => void goCheckout()}
+            disabled={displayItems.length === 0}
+            className="block w-full rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3 text-center font-semibold text-white shadow-lg shadow-orange-700/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("checkout")}
-          </Link>
+          </button>
         </div>
       </aside>
     </>

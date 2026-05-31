@@ -1,12 +1,9 @@
-import {
-  emailButton,
-  infoRow,
-  telLink,
-  whatsAppLink,
-  wrapEmailHtml,
-} from "@/lib/email/templates/layout";
+import type { StoreEmailBrand } from "@/lib/email/store-branding";
+import { emailButton, infoRow, telLink, whatsAppLink, wrapEmailHtml } from "@/lib/email/templates/layout";
+import { escapeHtml } from "@/lib/email/templates/order-shared";
 
 export type ContactLeadEmailData = {
+  brand: StoreEmailBrand;
   name: string;
   phone?: string | null;
   email?: string | null;
@@ -19,19 +16,22 @@ export function renderContactLeadEmail(data: ContactLeadEmailData): { subject: s
   const tel = telLink(data.phone);
   const wa = whatsAppLink(data.phone);
   const mail = data.email?.trim() ? `mailto:${data.email.trim()}` : null;
+  const accent = data.brand.accentColor;
 
   const actions = [
-    tel ? emailButton(tel, "📞 התקשר") : "",
-    wa ? emailButton(wa, "💬 WhatsApp", false) : "",
-    mail ? emailButton(mail, "✉️ השב במייל", false) : "",
+    tel ? emailButton(tel, "התקשר", accent) : "",
+    wa ? emailButton(wa, "WhatsApp", false) : "",
+    mail ? emailButton(mail, "השב במייל", false) : "",
   ].join("");
 
   const body = `
-    <p style="margin:0 0 16px;color:#e2e8f0;">התקבלה פנייה חדשה מהאתר.</p>
+    <div style="padding:14px 18px;background:#0f172a;border-radius:12px;border-right:4px solid ${accent};margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:800;color:#fff;">פנייה חדשה מהאתר</div>
+    </div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;">
-      ${infoRow("שם", data.name)}
-      ${infoRow("טלפון", data.phone || "—")}
-      ${infoRow("אימייל", data.email || "—")}
+      ${infoRow("שם", escapeHtml(data.name))}
+      ${infoRow("טלפון", data.phone ? escapeHtml(data.phone) : "—")}
+      ${infoRow("אימייל", data.email ? escapeHtml(data.email) : "—")}
       ${infoRow("תאריך", when)}
     </table>
     <div style="margin:20px 0;padding:16px;background:#0f172a;border-radius:12px;border:1px solid #334155;">
@@ -42,15 +42,10 @@ export function renderContactLeadEmail(data: ContactLeadEmailData): { subject: s
   `;
 
   return {
-    subject: "🔥 New Contact Lead - DESIGMA",
-    html: wrapEmailHtml("פנייה חדשה", body, `פנייה מ${data.name}`),
+    subject: `פנייה חדשה מהאתר — ${data.brand.name}`,
+    html: wrapEmailHtml("פנייה חדשה", body, {
+      preheader: `פנייה מ${data.name}`,
+      brand: { name: data.brand.name, logoUrl: data.brand.logoUrl, accentColor: accent },
+    }),
   };
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

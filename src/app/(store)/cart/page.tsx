@@ -1,57 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { useCart } from "@/components/cart-context";
 import { AssetImg } from "@/components/asset-img";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
-
-type ProductRow = {
-  id: string;
-  name_he: string;
-  name_ar: string;
-  name_en: string;
-  price: number;
-  stock: number;
-  image: string | null;
-};
+import { availableStockForLine, isLinePurchasable, lineUnitPrice } from "@/lib/cart/availability";
 
 export default function CartPage() {
-  const { items, setQuantity, removeItem } = useCart();
+  const router = useRouter();
+  const { items, products, subtotal, syncing, syncedOnce, setQuantity, removeItem, validateForCheckout } =
+    useCart();
   const { t, lang, dir } = useStoreI18n();
-  const [products, setProducts] = useState<Record<string, ProductRow>>({});
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (items.length === 0) {
-      setProducts({});
-      setLoading(false);
-      return;
-    }
-    const ids = Array.from(new Set(items.map((i) => i.productId)));
-    fetch(`/api/products/bulk?ids=${ids.join(",")}`)
-      .then((r) => r.json())
-      .then((data: { products: ProductRow[] }) => {
-        const map: Record<string, ProductRow> = {};
-        for (const p of data.products) map[p.id] = p;
-        setProducts(map);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [items]);
+  const displayItems = useMemo(
+    () =>
+      items.filter((line) => {
+        const p = products[line.productId];
+        return p && isLinePurchasable(p, line);
+      }),
+    [items, products],
+  );
 
-  let subtotal = 0;
-  for (const line of items) {
-    const p = products[line.productId];
-    if (p) subtotal += p.price * line.quantity;
+  async function goCheckout() {
+    const check = await validateForCheckout();
+    if (!check.ok) return;
+    router.push("/checkout");
   }
 
   return (
     <div dir={dir} className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="text-3xl font-black text-white">{t("cart")}</h1>
-      {loading && <p className="mt-6 text-zinc-500">טוען…</p>}
-      {!loading && items.length === 0 && (
+      {(syncing || !syncedOnce) && items.length > 0 && <p className="mt-6 text-zinc-500">טוען…</p>}
+      {syncedOnce && !syncing && displayItems.length === 0 && (
         <p className="mt-6 text-zinc-400">
           {t("emptyCart")}{" "}
           <Link href="/products" className="text-orange-400 hover:underline">
@@ -60,10 +43,12 @@ export default function CartPage() {
         </p>
       )}
       <ul className="mt-6 space-y-4">
-        {items.map((line) => {
+        {displayItems.map((line) => {
           const p = products[line.productId];
           if (!p) return null;
-          const lineTotal = p.price * line.quantity;
+          const maxStock = availableStockForLine(p, line.optionIds);
+          const unit = lineUnitPrice(p, line.optionIds);
+          const lineTotal = unit * line.quantity;
           return (
             <li
               key={line.key}
@@ -75,7 +60,7 @@ export default function CartPage() {
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-zinc-100">{pickLocalized(p, "name", lang)}</div>
                 <div className="mt-1 text-sm text-zinc-400">
-                  ₪{p.price.toFixed(2)} × {line.quantity} = ₪{lineTotal.toFixed(2)}
+                  ₪{unit.toFixed(2)} × {line.quantity} = ₪{lineTotal.toFixed(2)}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <label className="text-sm text-zinc-400">
@@ -83,10 +68,10 @@ export default function CartPage() {
                     <input
                       type="number"
                       min={1}
-                      max={p.stock}
+                      max={maxStock}
                       value={line.quantity}
                       onChange={(e) =>
-                        setQuantity(line.key, Math.min(p.stock, Math.max(1, Number(e.target.value) || 1)))
+                        setQuantity(line.key, Math.min(maxStock, Math.max(1, Number(e.target.value) || 1)))
                       }
                       className="ml-1 w-16 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
                     />
@@ -104,17 +89,18 @@ export default function CartPage() {
           );
         })}
       </ul>
-      {items.length > 0 && (
+      {displayItems.length > 0 && (
         <div className="mt-8 flex items-center justify-between border-t border-zinc-800 pt-6">
           <span className="text-lg font-semibold text-zinc-100">
             {t("subtotal")}: ₪{subtotal.toFixed(2)}
           </span>
-          <Link
-            href="/checkout"
+          <button
+            type="button"
+            onClick={() => void goCheckout()}
             className="rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-3 font-medium text-white"
           >
             {t("checkout")}
-          </Link>
+          </button>
         </div>
       )}
     </div>

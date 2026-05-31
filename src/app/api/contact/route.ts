@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
 import { clientIpFromRequest, rateLimit } from "@/lib/rate-limit";
-import { queueEmail, sendContactLeadEmail } from "@/lib/email/email-service";
+import { queueEmail, sendContactAutoReplyEmail, sendContactLeadEmail } from "@/lib/email/email-service";
 
 export const runtime = "nodejs";
 
@@ -50,15 +50,18 @@ export async function POST(req: Request) {
     },
   });
 
-  queueEmail(() =>
-    sendContactLeadEmail({
+  queueEmail(async () => {
+    await sendContactLeadEmail(storeId, {
       name: lead.name,
       phone: lead.phone,
       email: lead.email,
       message: lead.message,
       createdAt: lead.createdAt,
-    }),
-  );
+    });
+    if (lead.email) {
+      await sendContactAutoReplyEmail(storeId, { name: lead.name, email: lead.email });
+    }
+  });
 
   return NextResponse.json({ ok: true, id: lead.id });
 }

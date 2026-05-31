@@ -7,10 +7,8 @@ import {
 import { prisma } from "../prisma";
 import { STORE_ID } from "@/lib/store";
 import { reduceInventoryAfterPayment } from "@/lib/inventory/updateInventory";
-import {
-  notifyOrderConfirmationToCustomer,
-  notifyOrderPaidToOwner,
-} from "@/lib/notifications";
+import { notifyOrderPaidEmailsAsync } from "@/lib/notifications";
+import { ORDER_STATUS_PAYMENT_FAILED } from "@/lib/orders/order-status-values";
 
 export type WebhookInput = {
   provider: string;
@@ -66,13 +64,15 @@ export async function processPaymentWebhook(input: WebhookInput): Promise<{ ok: 
     return { ok: true, message: "Order already paid" };
   }
 
+  const wasAlreadyPaid = order.paymentStatus === OrderPaymentStatus.PAID;
+
   if (!input.success) {
     await prisma.$transaction(async (tx) => {
       await tx.order.updateMany({
         where: { id: order.id, storeId },
         data: {
           paymentStatus: OrderPaymentStatus.FAILED,
-          status: OrderStatus.FAILED,
+          status: ORDER_STATUS_PAYMENT_FAILED,
         },
       });
     });
@@ -184,28 +184,8 @@ export async function processPaymentWebhook(input: WebhookInput): Promise<{ ok: 
     return { ok: false, message: `Inventory error: ${inv.message}` };
   }
 
-  const paidSummary = await prisma.order.findFirst({
-    where: { id: order.id, storeId },
-    select: {
-      customerEmail: true,
-      customerName: true,
-      orderNumber: true,
-      total: true,
-    },
-  });
-  const cur = await prisma.storeSettings.findUnique({ where: { storeId } });
-  const curCurrency = cur?.currency ?? "ILS";
-  if (paidSummary) {
-    const payload = {
-      orderId: order.id,
-      orderNumber: paidSummary.orderNumber,
-      customerEmail: paidSummary.customerEmail,
-      customerName: paidSummary.customerName,
-      total: Number(paidSummary.total),
-      currency: curCurrency,
-    };
-    void notifyOrderConfirmationToCustomer(payload).catch(() => {});
-    void notifyOrderPaidToOwner(payload).catch(() => {});
+  if (!wasAlreadyPaid) {
+    notifyOrderPaidEmailsAsync(order.id);
   }
 
   return { ok: true, message: "Payment recorded" };

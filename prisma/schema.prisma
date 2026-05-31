@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -16,6 +17,10 @@ enum UserRole {
 enum DeliveryType {
   PICKUP
   SHIPPING
+  HOME
+  EXPRESS
+  PICKUP_POINT
+  INTERNATIONAL
 }
 
 enum CouponType {
@@ -25,9 +30,12 @@ enum CouponType {
 
 enum OrderStatus {
   PENDING
+  PENDING_PAYMENT
   PAID
   CANCELLED
   FAILED
+  PAYMENT_FAILED
+  ABANDONED
 }
 
 /// Customer-facing fulfillment / tracking stage (independent of payment).
@@ -445,6 +453,9 @@ model DeliveryOption {
   name_en   String
   type      DeliveryType
   price     Decimal      @db.Decimal(12, 2)
+  eta_he    String?
+  eta_ar    String?
+  eta_en    String?
   active    Boolean      @default(true)
   sortOrder Int          @default(0)
   createdAt DateTime     @default(now())

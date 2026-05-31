@@ -1,9 +1,24 @@
 import "server-only";
 
-import { queueEmail, sendNewOrderEmail, sendOrderStatusEmail } from "@/lib/email/email-service";
+import {
+  queueEmail,
+  sendOrderStatusEmail,
+} from "@/lib/email/email-service";
+import { sendPostPaymentOrderEmails } from "@/lib/payments/post-payment-emails";
 
-export function notifyNewOrderToOwnerAsync(orderId: string): void {
-  queueEmail(() => sendNewOrderEmail(orderId));
+/** Sends customer confirmation + owner notification — only when order is PAID. */
+export function notifyOrderPaidEmailsAsync(orderId: string): void {
+  queueEmail(() => sendPostPaymentOrderEmails(orderId));
+}
+
+/** @deprecated Do not call on checkout create — use notifyOrderPaidEmailsAsync after payment. */
+export function notifyNewOrderToOwnerAsync(_orderId: string): void {
+  // Intentionally no-op: owner is notified after payment via notifyOrderPaidEmailsAsync.
+}
+
+/** @deprecated Do not call on checkout create — use notifyOrderPaidEmailsAsync after payment. */
+export function notifyOrderConfirmationToCustomerAsync(_orderId: string): void {
+  // Intentionally no-op: confirmation is sent after payment via notifyOrderPaidEmailsAsync.
 }
 
 export type OrderNotificationPayload = {
@@ -15,12 +30,22 @@ export type OrderNotificationPayload = {
   currency: string;
 };
 
+/** @deprecated Use notifyOrderPaidEmailsAsync(orderId) after payment succeeds. */
 export function notifyOrderConfirmationToCustomer(payload: OrderNotificationPayload): Promise<void> {
-  queueEmail(() => sendOrderStatusEmail(payload.orderId, "RECEIVED"));
+  notifyOrderPaidEmailsAsync(payload.orderId);
   return Promise.resolve();
 }
 
+/** @deprecated Use notifyOrderPaidEmailsAsync(orderId) after payment succeeds. */
 export function notifyOrderPaidToOwner(payload: OrderNotificationPayload): Promise<void> {
-  queueEmail(() => sendNewOrderEmail(payload.orderId));
+  notifyOrderPaidEmailsAsync(payload.orderId);
   return Promise.resolve();
+}
+
+export function notifyOrderStatusChangeAsync(
+  orderId: string,
+  statusKey: string,
+  extras?: { trackingNumber?: string | null; carrier?: string | null },
+): void {
+  queueEmail(() => sendOrderStatusEmail(orderId, statusKey, extras));
 }
