@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getStore } from "@/lib/server/store-loaders";
 import { safeAllSettled } from "@/lib/server/safe-all-settled";
 import { safeQuery } from "@/lib/server/safe-query";
+import { withDbRetry, isDbPoolError } from "@/lib/server/db-retry";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
 
 export const dynamic = "force-dynamic";
@@ -77,9 +78,39 @@ async function loadHomeData(storeId: string): Promise<HomeLoaded> {
 
 export default async function HomePage() {
   const { storeId } = await getStore();
-  const { banners, categories, products } = await loadHomeData(storeId);
+  let loadError: string | null = null;
+  let banners: HomeLoaded["banners"] = [];
+  let categories: HomeLoaded["categories"] = [];
+  let products: HomeLoaded["products"] = [];
+
+  try {
+    const data = await loadHomeData(storeId);
+    banners = data.banners;
+    categories = data.categories;
+    products = data.products;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    loadError = msg;
+    console.error("[homepage] load failed", { storeId, error: msg });
+  }
 
   console.log("[homepage] storeId=", storeId, "productsLoaded=", products.length);
+
+  if (products.length === 0) {
+    try {
+      await withDbRetry(() => prisma.$queryRaw`SELECT 1`, { attempts: 2, delayMs: 300 });
+      const n = await prisma.product.count({ where: { storeId, active: true } });
+      if (n === 0) {
+        loadError = `אין מוצרים פעילים לחנות "${storeId}" במסד הנתונים.`;
+      }
+    } catch (e) {
+      loadError = isDbPoolError(e)
+        ? "מסד הנתונים עמוס (Session Pooler 5432). עדכנו DATABASE_URL לפורט 6543 ב-Vercel."
+        : e instanceof Error
+          ? e.message
+          : "שגיאת מסד נתונים";
+    }
+  }
 
   const heroBanner = banners.find((b) => b.isHero) ?? null;
   const nonHeroBanners = banners.filter((b) => !b.isHero);
@@ -131,6 +162,7 @@ export default async function HomePage() {
 
   return (
     <StoreHomeClient
+      loadError={loadError}
       banners={heroBanner ? [heroBanner] : []}
       promoBanners={nonHeroBanners}
       categories={categories}

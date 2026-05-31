@@ -37,6 +37,7 @@ type Category = {
 };
 
 export function StoreHomeClient({
+  loadError,
   banners,
   promoBanners,
   categories,
@@ -49,6 +50,7 @@ export function StoreHomeClient({
   airConditionerDeals,
   newArrivals,
 }: {
+  loadError?: string | null;
   banners: Banner[];
   promoBanners: Banner[];
   categories: Category[];
@@ -79,6 +81,12 @@ export function StoreHomeClient({
 
   return (
     <div dir={dir}>
+      {loadError ? (
+        <div className="border-b border-amber-500/40 bg-amber-950/90 px-4 py-3 text-center text-sm text-amber-100">
+          שגיאת חיבור למסד הנתונים — האתר לא יכול לטעון מוצרים. בדקו ב-Vercel ש־DATABASE_URL משתמש בפורט{" "}
+          <strong>6543</strong> (Transaction pooler), לא 5432.
+        </div>
+      ) : null}
       <HeroSlider banners={banners} />
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-4 md:space-y-7 md:py-6">
         <Suspense
