@@ -18,10 +18,16 @@ export async function isOrderPaidForEmail(orderId: string): Promise<boolean> {
  * Only runs when paymentStatus === PAID (order confirmation, receipt, owner alert).
  */
 export async function sendPostPaymentOrderEmails(orderId: string): Promise<void> {
-  if (!(await isOrderPaidForEmail(orderId))) {
-    logEmailSkipped("order_confirmation", "payment_not_paid");
-    return;
+  try {
+    if (!(await isOrderPaidForEmail(orderId))) {
+      logEmailSkipped("order_confirmation", "payment_not_paid");
+      return;
+    }
+    await sendOrderConfirmationEmail(orderId);
+    await sendNewOrderEmail(orderId);
+  } catch (err) {
+    console.error("[email] post_payment_order_emails_failed", { orderId, err });
+    logEmailSkipped("order_confirmation", `exception:${err instanceof Error ? err.message : String(err)}`);
+    throw err;
   }
-  await sendOrderConfirmationEmail(orderId);
-  await sendNewOrderEmail(orderId);
 }

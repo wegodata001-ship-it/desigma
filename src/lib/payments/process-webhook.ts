@@ -175,17 +175,15 @@ export async function processPaymentWebhook(input: WebhookInput): Promise<{ ok: 
     });
   });
 
-  // Reduce inventory ONLY after verified paid status is persisted.
-  // Centralized logic: supports variants + prevents double-decrement.
-  const inv = await reduceInventoryAfterPayment(order.id);
-  if (!inv.ok) {
-    // Payment is valid, but inventory couldn't be reduced safely.
-    // We keep the order as PAID and store the error on the order.
-    return { ok: false, message: `Inventory error: ${inv.message}` };
-  }
-
+  // Emails must not depend on inventory — customer already paid.
   if (!wasAlreadyPaid) {
     notifyOrderPaidEmailsAsync(order.id);
+  }
+
+  // Reduce inventory ONLY after verified paid status is persisted.
+  const inv = await reduceInventoryAfterPayment(order.id);
+  if (!inv.ok) {
+    return { ok: false, message: `Payment recorded; inventory error: ${inv.message}` };
   }
 
   return { ok: true, message: "Payment recorded" };

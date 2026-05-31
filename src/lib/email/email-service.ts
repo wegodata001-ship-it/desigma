@@ -83,7 +83,14 @@ export async function sendOrderConfirmationEmail(orderId: string): Promise<void>
     return;
   }
   const payload = await loadOrderEmailPayload(orderId);
-  if (!payload?.order.customerEmail) return;
+  if (!payload) {
+    logEmailSkipped("order_confirmation", "order_not_found");
+    return;
+  }
+  if (!payload.order.customerEmail?.trim()) {
+    logEmailSkipped("order_confirmation", "no_customer_email");
+    return;
+  }
 
   const brand = await loadStoreEmailBrand(payload.order.storeId);
   const { subject, html } = renderOrderConfirmationEmail({
@@ -114,7 +121,10 @@ export async function sendNewOrderEmail(orderId: string): Promise<void> {
     return;
   }
   const payload = await loadOrderEmailPayload(orderId);
-  if (!payload) return;
+  if (!payload) {
+    logEmailSkipped("new_order", "order_not_found");
+    return;
+  }
 
   const brand = await loadStoreEmailBrand(payload.order.storeId);
   const adminTo = resolveAdminOrderEmail(brand);
@@ -153,7 +163,14 @@ export async function sendOrderStatusEmail(
   extras?: { trackingNumber?: string | null; carrier?: string | null },
 ): Promise<void> {
   const payload = await loadOrderEmailPayload(orderId);
-  if (!payload?.order.customerEmail) return;
+  if (!payload) {
+    logEmailSkipped("order_status", "order_not_found");
+    return;
+  }
+  if (!payload.order.customerEmail?.trim()) {
+    logEmailSkipped("order_status", "no_customer_email");
+    return;
+  }
 
   const brand = await loadStoreEmailBrand(payload.order.storeId);
   const { subject, html } = renderOrderStatusEmail({
@@ -219,7 +236,10 @@ export async function sendAdminNotificationEmail(data: {
   });
 }
 
-/** Fire-and-forget — never blocks the caller. */
+/** Fire-and-forget — never blocks the caller; logs failures to Vercel/runtime logs. */
 export function queueEmail(task: () => Promise<void>): void {
-  void task().catch(() => {});
+  void task().catch((err) => {
+    console.error("[email] queue_task_failed", err);
+    logEmailFailure("generic", "queue", err);
+  });
 }
