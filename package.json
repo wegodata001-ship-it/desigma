@@ -16,6 +16,7 @@
     "shipping:seed": "tsx scripts/seed-shipping-methods.ts",
     "qa:order-email-links": "tsx scripts/qa-order-email-links.ts",
     "db:check": "tsx scripts/check-db-data.ts",
+    "db:audit": "tsx scripts/audit-prisma.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
