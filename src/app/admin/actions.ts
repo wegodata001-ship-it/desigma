@@ -451,7 +451,9 @@ export async function upsertProduct(formData: FormData): Promise<
   }
 }
 
-export async function addProductImage(formData: FormData): Promise<AdminActionResult> {
+export async function addProductImage(formData: FormData): Promise<
+  AdminActionResult<{ id: string; url: string; isMain: boolean; sortOrder: number }>
+> {
   try {
     const { storeId, userId } = await guard();
     const productId = formData.get("productId") as string;
@@ -461,7 +463,7 @@ export async function addProductImage(formData: FormData): Promise<AdminActionRe
     const sortOrder = Number(formData.get("sortOrder") || 0);
     const setMain = formData.get("isMain") === "on";
 
-    await prisma.$transaction(async (tx) => {
+    const saved = await prisma.$transaction(async (tx) => {
       const created = await tx.productImage.create({
         data: {
           storeId,
@@ -487,6 +489,10 @@ export async function addProductImage(formData: FormData): Promise<AdminActionRe
           ),
         );
       }
+      return tx.productImage.findFirstOrThrow({
+        where: { id: created.id, storeId },
+        select: { id: true, url: true, isMain: true, sortOrder: true },
+      });
     });
     await logAdminAction({
       userId,
@@ -496,8 +502,10 @@ export async function addProductImage(formData: FormData): Promise<AdminActionRe
       metadata: { path: url },
     });
     revalidatePath("/admin/products");
-    return ok();
+    revalidatePath(`/products/${productId}`);
+    return ok(saved);
   } catch (e) {
+    console.error("[addProductImage] failed", e);
     return err(e instanceof Error ? e.message : "הוספת תמונה נכשלה");
   }
 }
@@ -535,6 +543,7 @@ export async function deleteProductImage(formData: FormData): Promise<AdminActio
     revalidatePath(`/products/${img.productId}`);
     return ok();
   } catch (e) {
+    console.error("[deleteProductImage] failed", e);
     return err(e instanceof Error ? e.message : "מחיקת תמונה נכשלה");
   }
 }
@@ -576,8 +585,10 @@ export async function setMainProductImage(formData: FormData): Promise<AdminActi
       entityId: productId,
     });
     revalidatePath("/admin/products");
+    revalidatePath(`/products/${productId}`);
     return ok();
   } catch (e) {
+    console.error("[setMainProductImage] failed", e);
     return err(e instanceof Error ? e.message : "עדכון תמונה ראשית נכשל");
   }
 }

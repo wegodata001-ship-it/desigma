@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+import Link from "next/link";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
 import { safeQuery } from "@/lib/server/safe-query";
@@ -7,6 +8,60 @@ import { StoreProductDetailClient } from "@/components/storefront/store-product-
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+export const metadata: Metadata = {
+  title: "מוצר — DESIGMA",
+};
+
+const productInclude = {
+  images: { orderBy: { sortOrder: "asc" as const } },
+  category: true,
+  variantGroups: {
+    orderBy: { sortOrder: "asc" as const },
+    include: { options: { orderBy: { sortOrder: "asc" as const } } },
+  },
+  relatedProducts: {
+    orderBy: { sortOrder: "asc" as const },
+    include: {
+      relatedProduct: {
+        include: { images: { orderBy: { sortOrder: "asc" as const }, take: 1 } },
+      },
+    },
+  },
+} as const;
+
+function ProductNotFound({ productId }: { productId: string }) {
+  return (
+    <div dir="rtl" className="mx-auto max-w-lg px-4 py-16 text-center">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-8 shadow-xl">
+        <p className="text-4xl" aria-hidden>
+          📱
+        </p>
+        <h1 className="mt-4 text-2xl font-bold text-white">מוצר לא נמצא</h1>
+        <p className="mt-3 text-sm text-zinc-400">
+          לא מצאנו מוצר עם המזהה{" "}
+          <span className="font-mono font-semibold text-zinc-200">{productId}</span>.
+          <br />
+          ייתכן שהמוצר הוסר או שהקישור שגוי.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/products"
+            className="inline-flex min-h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white hover:bg-orange-400"
+          >
+            לכל המוצרים
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+          >
+            חזרה לחנות
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function ProductPage({
   params,
 }: {
@@ -14,32 +69,26 @@ export default async function ProductPage({
 }) {
   const { id } = await params;
   const storeId = getStoreId();
+
+  console.log("Product ID:", id);
+  console.log("Store ID:", storeId);
+
   const product = await safeQuery(
     "product.detail",
     () =>
       prisma.product.findFirst({
-        where: { id, storeId, active: true },
-        include: {
-          images: { orderBy: { sortOrder: "asc" } },
-          category: true,
-          variantGroups: {
-            orderBy: { sortOrder: "asc" },
-            include: { options: { orderBy: { sortOrder: "asc" } } },
-          },
-          relatedProducts: {
-            orderBy: { sortOrder: "asc" },
-            include: {
-              relatedProduct: {
-                include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
-              },
-            },
-          },
-        },
+        where: { id, storeId },
+        include: productInclude,
       }),
     null,
     { timeoutMs: 20_000 },
   );
-  if (!product) notFound();
+
+  console.log("Product Found:", product);
+
+  if (!product) {
+    return <ProductNotFound productId={id} />;
+  }
 
   return (
     <StoreProductDetailClient

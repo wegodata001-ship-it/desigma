@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
 import { useAdminI18n } from "@/lib/admin-i18n";
+import { resolveUploadErrorMessage, type UploadErrorMessages } from "@/lib/admin-upload-errors";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
 import {
   addProductImage,
@@ -11,14 +12,44 @@ import {
   setProductImageOrder,
 } from "@/app/admin/actions";
 import { compressImageForUpload } from "@/lib/image-compress-client";
+import { withTimeout } from "@/lib/promise-with-timeout";
 
 export type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
+
+const COMPRESS_TIMEOUT_MS = 45_000;
 
 function sortImages(im: Img[]): Img[] {
   return [...im].sort((a, b) => {
     if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
     return a.sortOrder - b.sortOrder;
   });
+}
+
+function ImageToast({
+  kind,
+  message,
+  onDismiss,
+}: {
+  kind: "success" | "error";
+  message: string;
+  onDismiss: () => void;
+}) {
+  useEffect(() => {
+    const id = window.setTimeout(onDismiss, kind === "error" ? 6000 : 2500);
+    return () => window.clearTimeout(id);
+  }, [kind, onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className={`pointer-events-none fixed end-4 top-4 z-[120] max-w-sm rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-lg ${
+        kind === "success" ? "bg-emerald-600" : "bg-red-600"
+      }`}
+    >
+      {kind === "success" ? "✓ " : "✕ "}
+      {message}
+    </div>
+  );
 }
 
 export function ProductImagesSection({
@@ -39,7 +70,20 @@ export function ProductImagesSection({
   const [ordered, setOrdered] = useState<Img[]>(() => sortImages(product?.images ?? []));
   const [activeIdx, setActiveIdx] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  const uploadMessages: UploadErrorMessages = useMemo(
+    () => ({
+      imageSaveFailed: t("imageSaveFailed"),
+      fileTooLarge: t("fileTooLarge"),
+      uploadUnauthorized: t("uploadUnauthorized"),
+      uploadForbidden: t("uploadForbidden"),
+      uploadServerError: t("uploadServerError"),
+      uploadTimeout: t("uploadTimeout"),
+      uploadStorageUnavailable: t("uploadStorageUnavailable"),
+    }),
+    [t],
+  );
 
   useEffect(() => {
     const next = sortImages(product?.images ?? []);
@@ -47,15 +91,22 @@ export function ProductImagesSection({
     setActiveIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
   }, [product?.images]);
 
-  useEffect(() => {
-    if (!saved) return;
-    const id = window.setTimeout(() => setSaved(false), 2000);
-    return () => window.clearTimeout(id);
-  }, [saved]);
-
   const active = ordered[activeIdx] ?? null;
 
-  const showSaved = useCallback(() => setSaved(true), []);
+  const showSuccess = useCallback(() => {
+    setToast({ kind: "success", message: t("autoSaved") });
+  }, [t]);
+
+  const showError = useCallback(
+    (err: unknown, context: string) => {
+      console.error(`[ProductImagesSection] ${context}`, err);
+      setToast({
+        kind: "error",
+        message: resolveUploadErrorMessage(err, uploadMessages),
+      });
+    },
+    [uploadMessages],
+  );
 
   const persistOrder = useCallback(
     async (next: Img[]) => {
@@ -68,9 +119,9 @@ export function ProductImagesSection({
       if (!res.ok) throw new Error(res.error);
       setOrdered(mainFirst);
       onRefresh?.();
-      showSaved();
+      showSuccess();
     },
-    [product, onRefresh, showSaved],
+    [product, onRefresh, showSuccess],
   );
 
   const uploadFiles = useCallback(
@@ -84,49 +135,85 @@ export function ProductImagesSection({
       }
 
       setBusy(true);
+      setToast(null);
       try {
         let order = ordered.length;
         const hadImages = ordered.length > 0;
+        const added: Img[] = [];
+
         for (let i = 0; i < arr.length; i++) {
           let file = arr[i];
           try {
-            file = await compressImageForUpload(file);
+            file = await withTimeout(
+              compressImageForUpload(file),
+              COMPRESS_TIMEOUT_MS,
+              "compress",
+            );
           } catch (e) {
             if (e instanceof Error && e.message === "FILE_TOO_LARGE") throw e;
+            if (e instanceof Error && e.message.startsWith("TIMEOUT:")) throw e;
           }
+
           const path = await uploadAdminAsset(file, "products", {
             entityId: product.id,
             originalName: arr[i].name,
             compress: false,
           });
+
           const fd = new FormData();
           fd.append("productId", product.id);
           fd.append("url", path);
           fd.append("sortOrder", String(order++));
           if (!hadImages && i === 0) fd.append("isMain", "on");
+
           const res = await addProductImage(fd);
           if (!res.ok) throw new Error(res.error);
+          added.push(res.data);
         }
-        showSaved();
+
+        setOrdered((prev) => sortImages([...prev, ...added]));
+        setActiveIdx((prev) => (ordered.length === 0 ? 0 : prev));
+        showSuccess();
         onRefresh?.();
+      } catch (e) {
+        showError(e, "uploadFiles");
       } finally {
         setBusy(false);
       }
     },
-    [product, ordered.length, selectedFiles, setSelectedFiles, onRefresh, showSaved],
+    [
+      product,
+      ordered.length,
+      selectedFiles,
+      setSelectedFiles,
+      onRefresh,
+      showSuccess,
+      showError,
+    ],
   );
 
   const handleSetMain = async (imageId: string) => {
     if (!product) return;
     setBusy(true);
+    setToast(null);
     try {
       const fd = new FormData();
       fd.append("productId", product.id);
       fd.append("imageId", imageId);
       const res = await setMainProductImage(fd);
       if (!res.ok) throw new Error(res.error);
-      showSaved();
+      setOrdered((prev) =>
+        sortImages(
+          prev.map((im) => ({
+            ...im,
+            isMain: im.id === imageId,
+          })),
+        ),
+      );
+      showSuccess();
       onRefresh?.();
+    } catch (e) {
+      showError(e, "handleSetMain");
     } finally {
       setBusy(false);
     }
@@ -140,9 +227,11 @@ export function ProductImagesSection({
     [next[idx], next[target]] = [next[target], next[idx]];
     setActiveIdx(target);
     setBusy(true);
+    setToast(null);
     try {
       await persistOrder(next.map((x, i) => ({ ...x, sortOrder: i })));
-    } catch {
+    } catch (e) {
+      showError(e, "handleMove");
       setOrdered(sortImages(product?.images ?? []));
     } finally {
       setBusy(false);
@@ -152,13 +241,18 @@ export function ProductImagesSection({
   const handleDelete = async (imageId: string) => {
     if (!product) return;
     setBusy(true);
+    setToast(null);
     try {
       const fd = new FormData();
       fd.append("imageId", imageId);
       const res = await deleteProductImage(fd);
       if (!res.ok) throw new Error(res.error);
-      showSaved();
+      setOrdered((prev) => sortImages(prev.filter((im) => im.id !== imageId)));
+      setActiveIdx((i) => Math.max(0, Math.min(i, ordered.length - 2)));
+      showSuccess();
       onRefresh?.();
+    } catch (e) {
+      showError(e, "handleDelete");
     } finally {
       setBusy(false);
     }
@@ -177,13 +271,8 @@ export function ProductImagesSection({
 
   return (
     <div className="relative space-y-4">
-      {saved && (
-        <div
-          role="status"
-          className="pointer-events-none fixed end-4 top-4 z-[120] rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-lg"
-        >
-          ✓ {t("autoSaved")}
-        </div>
+      {toast && (
+        <ImageToast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} />
       )}
 
       <div className="flex flex-wrap items-start justify-between gap-3">

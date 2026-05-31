@@ -138,7 +138,8 @@ function ColorOptionCard({
                       originalName: f.name,
                     });
                     onChange(groupId, option.id, { image: path, uploading: false });
-                  } catch {
+                  } catch (e) {
+                    console.error("[variant image upload]", e);
                     onChange(groupId, option.id, { uploading: false });
                   } finally {
                     try {

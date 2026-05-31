@@ -95,6 +95,15 @@ export function ProductsAdminClient({
     }
   }, [initialOpenAdd, router, searchParams]);
 
+  useEffect(() => {
+    if (!editProduct) return;
+    const fresh = products.find((p) => p.id === editProduct.id);
+    if (!fresh) return;
+    const prevIds = editProduct.images.map((i) => i.id).join(",");
+    const nextIds = fresh.images.map((i) => i.id).join(",");
+    if (prevIds !== nextIds) setEditProduct(fresh);
+  }, [products, editProduct]);
+
   const refresh = useCallback(() => {
     startTransition(() => router.refresh());
   }, [router]);
@@ -110,22 +119,29 @@ export function ProductsAdminClient({
     if (files?.length && pid) {
       const hadImages = (editing?.images.length ?? 0) > 0;
       let order = editing?.images.length ?? 0;
-      for (let i = 0; i < files.length; i++) {
-        const path = await uploadAdminAsset(files[i], "products", {
-          entityId: pid,
-          originalName: files[i].name,
-        });
-        const fd = new FormData();
-        fd.append("productId", pid);
-        fd.append("url", path);
-        fd.append("sortOrder", String(order++));
-        const setMain = !hadImages && i === 0;
-        fd.append("isMain", setMain ? "on" : "");
-        const ir = await addProductImage(fd);
-        if (!ir.ok) {
-          setToast(ir.error);
-          return;
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const path = await uploadAdminAsset(files[i], "products", {
+            entityId: pid,
+            originalName: files[i].name,
+          });
+          const fd = new FormData();
+          fd.append("productId", pid);
+          fd.append("url", path);
+          fd.append("sortOrder", String(order++));
+          const setMain = !hadImages && i === 0;
+          fd.append("isMain", setMain ? "on" : "");
+          const ir = await addProductImage(fd);
+          if (!ir.ok) {
+            console.error("[handleUpsert] addProductImage failed", ir.error);
+            setToast(ir.error);
+            return;
+          }
         }
+      } catch (e) {
+        console.error("[handleUpsert] product image upload failed", e);
+        setToast(e instanceof Error ? e.message : t("imageSaveFailed"));
+        return;
       }
     }
     setToast(t("savedSuccessfully"));

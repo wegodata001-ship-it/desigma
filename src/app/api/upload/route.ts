@@ -22,8 +22,11 @@ const safeSegment = (v: string) =>
 export async function POST(req: Request) {
   try {
     assertAdmin(await getSession());
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unauthorized";
+    const status = msg === "Forbidden" ? 403 : 401;
+    console.error("[api/upload] auth failed", { status, msg });
+    return NextResponse.json({ error: msg }, { status });
   }
 
   let formData: FormData;
@@ -78,10 +81,17 @@ export async function POST(req: Request) {
     const buf = Buffer.from(await file.arrayBuffer());
     const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, buf, {
       contentType: file.type || undefined,
+      upsert: false,
     });
     if (error) throw error;
+    console.log("[api/upload] ok", { path, bytes: buf.length, kind });
     return NextResponse.json({ path });
-  } catch {
+  } catch (e) {
+    console.error("[api/upload] storage failed", {
+      path,
+      kind,
+      message: e instanceof Error ? e.message : String(e),
+    });
     return NextResponse.json(
       { error: "Upload failed. Storage is not configured or unavailable." },
       { status: 503 },
