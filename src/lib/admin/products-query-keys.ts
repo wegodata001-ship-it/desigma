@@ -7,3 +7,5 @@ export const adminProductsKeys = {
 
 export const ADMIN_LIST_STALE_MS = 60_000;
 export const ADMIN_LIST_GC_MS = 300_000;
+/** Product edit modal — always refetch so specs/descriptions match DB. */
+export const ADMIN_PRODUCT_DETAIL_STALE_MS = 0;

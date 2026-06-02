@@ -8,12 +8,14 @@ import { adminThumbnailSrc } from "@/lib/image-thumbnail";
 import type { CategoryOpt } from "@/lib/admin/categories-options";
 import {
   imagesFromUploadedPaths,
+  patchProductDetailFromForm,
   patchProductListRowFromForm,
 } from "@/lib/admin/product-list-patch";
 import type { ProductListRow } from "@/lib/admin/product-serialize";
 import {
   ADMIN_LIST_GC_MS,
   ADMIN_LIST_STALE_MS,
+  ADMIN_PRODUCT_DETAIL_STALE_MS,
   adminProductsKeys,
 } from "@/lib/admin/products-query-keys";
 import { AdminModal } from "@/components/admin/admin-modal";
@@ -174,8 +176,9 @@ export function ProductsAdminClient({
     queryKey: adminProductsKeys.product(editId ?? ""),
     queryFn: () => fetchProductDetail(editId!),
     enabled: !!editId,
-    staleTime: ADMIN_LIST_STALE_MS,
+    staleTime: ADMIN_PRODUCT_DETAIL_STALE_MS,
     gcTime: ADMIN_LIST_GC_MS,
+    refetchOnMount: "always",
   });
 
   const handleProductImagesChange = useCallback(
@@ -279,11 +282,11 @@ export function ProductsAdminClient({
     patchList(pid, listRow, isNew);
 
     if (editing) {
-      queryClient.setQueryData<ProductRow>(adminProductsKeys.product(pid), {
-        ...editing,
-        ...listRow,
-        images: listImages.length ? listImages : editing.images,
-      });
+      const images = listImages.length > 0 ? listImages : editing.images;
+      queryClient.setQueryData<ProductRow>(
+        adminProductsKeys.product(pid),
+        patchProductDetailFromForm(form, pid, editing, images),
+      );
     }
 
     setToast(t("savedSuccessfully"));
@@ -469,7 +472,7 @@ export function ProductsAdminClient({
         title={t("edit")}
         size="xl"
       >
-        {editLoading && (
+        {editLoading && !editProduct && (
           <div className="flex items-center justify-center gap-2 py-16 text-slate-600">
             <AdminSpinner />
             <span>{t("updating")}</span>
@@ -478,7 +481,7 @@ export function ProductsAdminClient({
         {editError && (
           <p className="py-8 text-center text-sm text-red-600">{(editError as Error).message}</p>
         )}
-        {editProduct && !editLoading && (
+        {editProduct && (
           <ProductForm
             key={editProduct.id}
             categories={categories}
@@ -585,6 +588,13 @@ function ProductForm({
   const [specsAr, setSpecsAr] = useState<ProductSpecItem[]>(() => specsForForm(product?.specs_ar));
   const [specsEn, setSpecsEn] = useState<ProductSpecItem[]>(() => specsForForm(product?.specs_en));
   const { t } = useAdminI18n();
+
+  useEffect(() => {
+    if (!product?.id) return;
+    setSpecsHe(specsForForm(product.specs_he));
+    setSpecsAr(specsForForm(product.specs_ar));
+    setSpecsEn(specsForForm(product.specs_en));
+  }, [product?.id, product?.specs_he, product?.specs_ar, product?.specs_en]);
 
   async function internalSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
