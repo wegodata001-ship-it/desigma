@@ -5,6 +5,7 @@ import { safeQuery } from "@/lib/server/safe-query";
 import { withDbRetry, isDbPoolError } from "@/lib/server/db-retry";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
 import { pickProductImageUrl } from "@/lib/product-images";
+import { productListForCardsSelect, type ProductListForCards } from "@/lib/prisma-product-selects";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,16 +20,7 @@ type HomeLoaded = {
     name_en: string;
     imageUrl: string | null;
   }>;
-  products: Awaited<
-    ReturnType<
-      typeof prisma.product.findMany<{
-        include: {
-          category: { select: { id: true; parentId: true; name_en: true } };
-          images: true;
-        };
-      }>
-    >
-  >;
+  products: ProductListForCards[];
 };
 
 async function loadHomeData(storeId: string): Promise<HomeLoaded> {
@@ -75,10 +67,7 @@ async function loadHomeData(storeId: string): Promise<HomeLoaded> {
             prisma.product.findMany({
               where: { storeId, active: true },
               take: 60,
-              include: {
-                category: { select: { id: true, parentId: true, name_en: true } },
-                images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
-              },
+              select: productListForCardsSelect,
               orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
             }),
           [],

@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { CatalogProductImage } from "@/components/storefront/catalog-product-image";
 import { QuickAddToCartButton } from "@/components/storefront/quick-add-to-cart-button";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
-import { PRODUCT_CARD_WIDTH_CLASS } from "@/lib/product-card-layout";
+import {
+  PRODUCT_CARD_BODY_CLASS,
+  PRODUCT_CARD_IMAGE_WRAPPER_CLASS,
+  PRODUCT_CARD_WIDTH_CLASS,
+} from "@/lib/product-card-layout";
 import { pickLocalized } from "@/lib/localized";
 
 /** Canonical product shape for every catalog card on the site. */
@@ -48,10 +53,9 @@ function swatchColor(name: string): string {
   return COLOR_SWATCH[name.toLowerCase()] ?? "#64748b";
 }
 
-/**
- * The only product card used across the storefront (home, categories, collections, grids).
- * Do not fork this component — extend `ProductCardData` if more fields are needed.
- */
+const DEBUG_PRODUCT_IMAGES =
+  process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEBUG_PRODUCT_IMAGES === "1";
+
 export function ProductCard({ product }: { product: ProductCardData }) {
   const { lang, t } = useStoreI18n();
   const title = pickLocalized(product, "name", lang);
@@ -61,13 +65,27 @@ export function ProductCard({ product }: { product: ProductCardData }) {
     ...(product.tags ?? []),
   ].slice(0, 3);
 
+  useEffect(() => {
+    if (!DEBUG_PRODUCT_IMAGES) return;
+    console.log("[ProductCard]", {
+      id: product.id,
+      image: product.image,
+      title,
+    });
+  }, [product.id, product.image, title]);
+
   return (
     <article
-      className={`group mx-auto flex h-full flex-col rounded-2xl border border-zinc-800 bg-[#111827] p-2.5 shadow-[0_12px_30px_-18px_rgba(0,0,0,0.7)] transition hover:border-orange-500/40 active:scale-[0.99] md:p-3 ${PRODUCT_CARD_WIDTH_CLASS}`}
+      className={`group/card mx-auto flex h-full flex-col rounded-2xl border border-zinc-800 bg-[#111827] p-2.5 shadow-[0_12px_30px_-18px_rgba(0,0,0,0.7)] transition hover:border-orange-500/40 active:scale-[0.99] md:p-3 ${PRODUCT_CARD_WIDTH_CLASS}`}
     >
-      <Link href={`/products/${product.id}`} className="relative block w-full shrink-0">
-        <CatalogProductImage path={product.image} alt={title} variant="card" />
-        <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
+      <Link href={`/products/${product.id}`} className={PRODUCT_CARD_IMAGE_WRAPPER_CLASS}>
+        <CatalogProductImage
+          path={product.image}
+          alt={title}
+          variant="card"
+          frameClassName="absolute inset-0 h-full w-full"
+        />
+        <div className="pointer-events-none absolute start-2 top-2 z-10 flex flex-col gap-1">
           {product.discountPercent ? (
             <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-white">
               -{product.discountPercent}%
@@ -83,7 +101,8 @@ export function ProductCard({ product }: { product: ProductCardData }) {
           ))}
         </div>
       </Link>
-      <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-2">
+
+      <div className={PRODUCT_CARD_BODY_CLASS}>
         <Link
           href={`/products/${product.id}`}
           className="line-clamp-2 min-h-10 text-[13px] font-semibold leading-snug text-zinc-100 hover:text-orange-300 md:text-sm"

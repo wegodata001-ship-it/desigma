@@ -9,6 +9,7 @@ import {
   minSmartphonePrice,
 } from "@/lib/smartphone-catalog";
 import { pickProductImageUrl } from "@/lib/product-images";
+import { productCatalogWithVariantsSelect } from "@/lib/prisma-product-selects";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -63,14 +64,7 @@ export default async function ProductsPage({
             : {}),
         },
         orderBy: { createdAt: "desc" },
-        include: {
-          images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
-          category: { select: { name_he: true, name_en: true, parentId: true } },
-          variantGroups: {
-            orderBy: { sortOrder: "asc" },
-            include: { options: { orderBy: { sortOrder: "asc" } } },
-          },
-        },
+        select: productCatalogWithVariantsSelect,
       }),
     [],
     { timeoutMs: 20_000 },

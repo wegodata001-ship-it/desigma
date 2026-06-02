@@ -1,20 +1,25 @@
+"use client";
+
 import Image from "next/image";
 import { useState } from "react";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
 import { PRODUCT_CATALOG_BG, PRODUCT_IMAGE_QUALITY } from "@/lib/product-image-display";
 
+/** Intrinsic dimensions for Next/Image when not using `fill` (avoids height:0 parent bugs). */
+const PRODUCT_INTRINSIC_SIZE = 640;
+
 function ProductImageFallback({ className }: { className?: string }) {
   return (
     <div
-      className={`flex h-full w-full flex-col items-center justify-center gap-2 ${className ?? ""}`}
+      className={`flex h-full min-h-[inherit] w-full flex-col items-center justify-center gap-2 ${className ?? ""}`}
       style={{ backgroundColor: PRODUCT_CATALOG_BG }}
       aria-hidden
     >
-      <svg viewBox="0 0 64 64" className="h-14 w-14 text-zinc-600" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <svg viewBox="0 0 64 64" className="h-16 w-16 text-zinc-600 sm:h-20 sm:w-20" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="18" y="6" width="28" height="52" rx="6" />
         <circle cx="32" cy="48" r="2.5" fill="currentColor" stroke="none" />
       </svg>
-      <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">No image</span>
+      <span className="text-[11px] font-medium text-zinc-500">אין תמונה</span>
     </div>
   );
 }
@@ -61,6 +66,11 @@ export function AssetImg({
   }
 
   const src = resolvePublicAssetSrc(path);
+
+  if (process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEBUG_PRODUCT_IMAGES === "1") {
+    console.log("[AssetImg] IMAGE URL", { path, src, alt });
+  }
+
   const fitClass = fit === "contain" ? "object-contain object-center" : "object-cover object-center";
   const imageQuality = quality ?? (variant === "product" ? PRODUCT_IMAGE_QUALITY : 85);
   const imageSizes =
@@ -79,6 +89,7 @@ export function AssetImg({
       priority={priority}
       className={className}
       imageClassName={imageClassName}
+      useIntrinsic={variant === "product"}
     />
   );
 }
@@ -92,6 +103,7 @@ function ProductImageInner({
   priority,
   className,
   imageClassName,
+  useIntrinsic,
 }: {
   src: string;
   alt: string;
@@ -101,8 +113,11 @@ function ProductImageInner({
   priority?: boolean;
   className?: string;
   imageClassName?: string;
+  useIntrinsic: boolean;
 }) {
   const [useNative, setUseNative] = useState(false);
+
+  const imgClass = `${fitClass} ${imageClassName ?? ""}`;
 
   if (useNative) {
     return (
@@ -110,14 +125,32 @@ function ProductImageInner({
       <img
         src={src}
         alt={alt}
-        className={`h-full w-full ${fitClass} ${imageClassName ?? ""}`}
+        className={`h-full w-full ${imgClass}`}
         draggable={false}
       />
     );
   }
 
+  if (useIntrinsic) {
+    return (
+      <div className={`relative h-full w-full min-h-[1px] ${className ?? ""}`}>
+        <Image
+          src={src}
+          alt={alt}
+          width={PRODUCT_INTRINSIC_SIZE}
+          height={PRODUCT_INTRINSIC_SIZE}
+          priority={priority}
+          quality={imageQuality}
+          sizes={imageSizes}
+          className={`h-full w-full ${imgClass}`}
+          onError={() => setUseNative(true)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <span className={`relative block h-full w-full ${className ?? ""}`}>
+    <span className={`relative block h-full w-full min-h-[1px] ${className ?? ""}`}>
       <Image
         src={src}
         alt={alt}
@@ -125,7 +158,7 @@ function ProductImageInner({
         priority={priority}
         quality={imageQuality}
         sizes={imageSizes}
-        className={`${fitClass} ${imageClassName ?? ""}`}
+        className={imgClass}
         onError={() => setUseNative(true)}
       />
     </span>

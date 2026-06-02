@@ -2,6 +2,7 @@
 
 import { AssetImg } from "@/components/asset-img";
 import {
+  CATALOG_CARD_HOVER_TRANSITION_CLASS,
   CATALOG_FRAME_CLASS,
   CATALOG_IMAGE_INNER_CLASS,
   PRODUCT_CATALOG_BG,
@@ -15,13 +16,11 @@ type CatalogProductImageProps = {
   alt: string;
   variant: CatalogImageVariant;
   priority?: boolean;
-  /** Extra classes on outer frame (borders, rounded, etc.) */
   frameClassName?: string;
 };
 
 /**
- * Storefront product image — fixed frame, contain, centered, uniform background.
- * Use for cards, gallery, thumbs, cart, related products.
+ * Storefront product image — fixed frame, contain, centered.
  */
 export function CatalogProductImage({
   path,
@@ -41,32 +40,32 @@ export function CatalogProductImage({
     variant === "thumb"
       ? "rounded-xl"
       : variant === "card"
-        ? "rounded-2xl border border-zinc-800/90"
+        ? "rounded-xl"
         : "rounded-2xl border border-zinc-800";
+
+  const isCard = variant === "card";
 
   return (
     <div
-      className={`${CATALOG_FRAME_CLASS[variant]} ${rounded} ${frameClassName}`}
+      className={`${CATALOG_FRAME_CLASS[variant]} ${rounded} ${frameClassName} ${isCard ? CATALOG_CARD_HOVER_TRANSITION_CLASS : ""}`}
       style={{ backgroundColor: PRODUCT_CATALOG_BG }}
     >
-      <div className="absolute inset-0">
-        <AssetImg
-          path={path}
-          alt={alt}
-          fit="contain"
-          variant="product"
-          quality={PRODUCT_IMAGE_QUALITY}
-          sizes={sizes}
-          priority={priority}
-          className="relative block h-full w-full"
-          imageClassName={CATALOG_IMAGE_INNER_CLASS}
-        />
-      </div>
+      <AssetImg
+        path={path}
+        alt={alt}
+        fit="contain"
+        variant="product"
+        quality={PRODUCT_IMAGE_QUALITY}
+        sizes={sizes}
+        priority={priority}
+        className="absolute inset-0 h-full w-full p-2"
+        imageClassName={CATALOG_IMAGE_INNER_CLASS}
+      />
     </div>
   );
 }
 
-/** Admin / pending upload — blob URL preview at real catalog frame size (no Next optimizer). */
+/** Admin / pending upload — blob URL preview at catalog frame size. */
 export function CatalogProductImagePreview({
   src,
   alt,
@@ -78,7 +77,7 @@ export function CatalogProductImagePreview({
   variant?: CatalogImageVariant;
   frameClassName?: string;
 }) {
-  const rounded = variant === "thumb" ? "rounded-xl border border-slate-200" : "rounded-2xl border border-slate-200";
+  const rounded = variant === "thumb" ? "rounded-xl border border-slate-200" : "rounded-xl border border-slate-200";
 
   return (
     <div

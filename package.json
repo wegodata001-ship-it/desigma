@@ -18,6 +18,7 @@
     "audit:urls": "tsx scripts/audit-urls.ts",
     "db:check": "tsx scripts/check-db-data.ts",
     "db:apply-specs": "tsx scripts/apply-product-specs-columns.ts",
+    "audit:product-images": "tsx scripts/audit-product-images.ts",
     "db:audit": "tsx scripts/audit-prisma.ts",
     "store:audit": "tsx scripts/store-isolation-audit.ts",
     "store:migrate-base-to-desigma": "tsx scripts/migrate-base-to-desigma.ts",

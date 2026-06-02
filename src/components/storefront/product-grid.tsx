@@ -1,7 +1,7 @@
 "use client";
 
 import { ProductCard, type ProductCardData } from "@/components/product-card";
-import { PRODUCT_CARD_GRID_CLASS } from "@/lib/product-card-layout";
+import { PRODUCT_CARD_GRID_CLASS, PRODUCT_CARD_GRID_ITEM_CLASS } from "@/lib/product-card-layout";
 
 export function ProductGrid({ title, products }: { title?: string; products: ProductCardData[] }) {
   if (products.length === 0) return null;
@@ -11,7 +11,7 @@ export function ProductGrid({ title, products }: { title?: string; products: Pro
       {title ? <h2 className="text-2xl font-black text-white">{title}</h2> : null}
       <ul className={PRODUCT_CARD_GRID_CLASS}>
         {products.map((p) => (
-          <li key={p.id} className="flex w-full justify-center">
+          <li key={p.id} className={PRODUCT_CARD_GRID_ITEM_CLASS}>
             <ProductCard product={p} />
           </li>
         ))}
