@@ -40,28 +40,16 @@ export function HeroSlider({ banners }: { banners: HeroBanner[] }) {
   const { lang, t, dir } = useStoreI18n();
   const isRtl = dir === "rtl";
 
-  const slides = useMemo(
-    () =>
-      banners.length > 0
-        ? banners
-        : [
-            {
-              id: "fallback",
-              title_he: t("heroTitle"),
-              title_ar: t("heroTitle"),
-              title_en: t("heroTitle"),
-              subtitle_he: t("heroSubtitle"),
-              subtitle_ar: t("heroSubtitle"),
-              subtitle_en: t("heroSubtitle"),
-              buttonText_he: t("heroCta"),
-              buttonText_ar: t("heroCta"),
-              buttonText_en: t("heroCta"),
-              buttonUrl: "/products",
-              imageUrl: DEFAULT_HERO_BG,
-            },
-          ],
-    [banners, t],
+  const activeBanners = useMemo(
+    () => banners.filter((b) => b.imageUrl?.trim() || b.title_he?.trim() || b.title_en?.trim()),
+    [banners],
   );
+
+  if (activeBanners.length === 0) {
+    return null;
+  }
+
+  const slides = activeBanners;
   const [idx, setIdx] = useState(0);
   const [bgSrc, setBgSrc] = useState<string>(DEFAULT_HERO_BG);
   const [bgLoaded, setBgLoaded] = useState(false);

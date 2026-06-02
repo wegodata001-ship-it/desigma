@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getStore } from "@/lib/server/store-loaders";
-import { safeAllSettled } from "@/lib/server/safe-all-settled";
+import { perfLog, perfTimed } from "@/lib/server/perf-log";
 import { safeQuery } from "@/lib/server/safe-query";
 import { withDbRetry, isDbPoolError } from "@/lib/server/db-retry";
 import { StoreHomeClient } from "@/components/storefront/store-home-client";
+import { pickProductImageUrl } from "@/lib/product-images";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,54 +31,78 @@ type HomeLoaded = {
   >;
 };
 
-async function loadHomeProducts(storeId: string) {
-  return safeQuery(
-    "store.home.products",
-    () =>
-      prisma.product.findMany({
-        where: { storeId, active: true },
-        take: 60,
-        include: {
-          category: { select: { id: true, parentId: true, name_en: true } },
-          images: { orderBy: { sortOrder: "asc" }, take: 1 },
-        },
-        orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-      }),
-    [],
-    { timeoutMs: 25_000 },
-  );
-}
-
 async function loadHomeData(storeId: string): Promise<HomeLoaded> {
-  const empty: HomeLoaded = { banners: [], categories: [], products: [] };
+  const pageT0 = performance.now();
 
-  // Load products first (sequential) — avoids pool exhaustion from 3 parallel queries on Supabase session pooler.
-  const products = await loadHomeProducts(storeId);
+  const [banners, categories, products] = await Promise.all([
+    perfTimed(
+      "home.banners",
+      () =>
+        safeQuery(
+          "store.home.banners",
+          () =>
+            prisma.banner.findMany({
+              where: { storeId, active: true },
+              orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }],
+            }),
+          [],
+          { timeoutMs: 12_000 },
+        ),
+      { storeId },
+    ),
+    perfTimed(
+      "home.categories",
+      () =>
+        safeQuery(
+          "store.home.categories",
+          () =>
+            prisma.category.findMany({
+              where: { storeId, active: true },
+              orderBy: { sortOrder: "asc" },
+              select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
+            }),
+          [],
+          { timeoutMs: 12_000 },
+        ),
+      { storeId },
+    ),
+    perfTimed(
+      "home.products",
+      () =>
+        safeQuery(
+          "store.home.products",
+          () =>
+            prisma.product.findMany({
+              where: { storeId, active: true },
+              take: 60,
+              include: {
+                category: { select: { id: true, parentId: true, name_en: true } },
+                images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
+              },
+              orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+            }),
+          [],
+          { timeoutMs: 25_000 },
+        ),
+      { storeId },
+    ),
+  ]);
 
-  const rest = await safeAllSettled(
-    "store.home",
-    {
-      banners: () =>
-        prisma.banner.findMany({
-          where: { storeId, active: true },
-          orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }],
-        }),
-      categories: () =>
-        prisma.category.findMany({
-          where: { storeId, active: true },
-          orderBy: { sortOrder: "asc" },
-          select: { id: true, parentId: true, name_he: true, name_ar: true, name_en: true, imageUrl: true },
-        }),
-    },
-    { banners: [], categories: [] },
-    { storeId },
-  );
+  perfLog("home.total", performance.now() - pageT0, {
+    storeId,
+    banners: banners.length,
+    categories: categories.length,
+    products: products.length,
+  });
 
-  return { ...rest, products };
+  return { banners, categories, products };
 }
 
 export default async function HomePage() {
+  const storeT0 = performance.now();
   const { storeId } = await getStore();
+  perfLog("home.getStore", performance.now() - storeT0, { storeId });
+
   let loadError: string | null = null;
   let banners: HomeLoaded["banners"] = [];
   let categories: HomeLoaded["categories"] = [];
@@ -93,8 +118,6 @@ export default async function HomePage() {
     loadError = msg;
     console.error("[homepage] load failed", { storeId, error: msg });
   }
-
-  console.log("[homepage] storeId=", storeId, "productsLoaded=", products.length);
 
   if (products.length === 0) {
     try {
@@ -157,7 +180,9 @@ export default async function HomePage() {
     oldPrice: p.oldPrice ? Number(p.oldPrice) : null,
     discountPercent: p.discountPercent ?? null,
     stock: p.stock,
-    image: p.images[0]?.url ?? null,
+    image: pickProductImageUrl(p.images),
+    tags: p.tags ?? [],
+    featured: p.featured,
   });
 
   return (

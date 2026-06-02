@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AssetImg } from "@/components/asset-img";
+import { CatalogProductImage } from "@/components/storefront/catalog-product-image";
 import { useCart } from "@/components/cart-context";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { crossSellModalDebug } from "@/lib/cross-sell-modal-debug";
@@ -29,12 +29,15 @@ export function RelatedProductsModal({
   main,
   mainDisplay,
   related,
+  mainAlreadyInCart = false,
 }: {
   open: boolean;
   onClose: () => void;
   main: { productId: string; qty: number; optionIds: string[]; title: string };
   mainDisplay?: { image: string | null; price: number };
   related: RelatedProduct[];
+  /** Main line was added optimistically before modal opened */
+  mainAlreadyInCart?: boolean;
 }) {
   const { addItem } = useCart();
   const { lang, dir } = useStoreI18n();
@@ -130,9 +133,22 @@ export function RelatedProductsModal({
     }, ADD_TIMEOUT_MS);
 
     try {
-      addItem(main.productId, main.qty, main.optionIds);
+      if (!mainAlreadyInCart) {
+        addItem(main.productId, main.qty, main.optionIds);
+      }
       for (const p of items) {
-        if (selected[p.id]) addItem(p.id, 1, []);
+        if (selected[p.id]) {
+          addItem(p.id, 1, [], {
+            id: p.id,
+            active: p.stock > 0,
+            stock: p.stock,
+            price: p.price,
+            name_he: p.name_he,
+            name_ar: p.name_ar,
+            name_en: p.name_en,
+            image: p.image,
+          });
+        }
       }
       crossSellModalDebug("add_success");
       requestClose();
@@ -144,7 +160,7 @@ export function RelatedProductsModal({
       clearAddTimeout();
       addingRef.current = false;
     }
-  }, [addItem, clearAddTimeout, items, main.optionIds, main.productId, main.qty, requestClose, selected]);
+  }, [addItem, clearAddTimeout, items, main.optionIds, main.productId, main.qty, mainAlreadyInCart, requestClose, selected]);
 
   const skipAndAddMain = useCallback(() => {
     if (addingRef.current) return;
@@ -153,7 +169,9 @@ export function RelatedProductsModal({
     crossSellModalDebug("skip_add_main");
     clearAddTimeout();
     try {
-      addItem(main.productId, main.qty, main.optionIds);
+      if (!mainAlreadyInCart) {
+        addItem(main.productId, main.qty, main.optionIds);
+      }
       crossSellModalDebug("add_success");
       requestClose();
     } catch (e) {
@@ -163,7 +181,7 @@ export function RelatedProductsModal({
     } finally {
       addingRef.current = false;
     }
-  }, [addItem, clearAddTimeout, main.optionIds, main.productId, main.qty, requestClose]);
+  }, [addItem, clearAddTimeout, main.optionIds, main.productId, main.qty, mainAlreadyInCart, requestClose]);
 
   if (!mounted || !open) return null;
 
@@ -197,9 +215,7 @@ export function RelatedProductsModal({
         <div className="mt-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 p-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-blue-300">המוצר הראשי</div>
           <div className="mt-2 flex items-center gap-3">
-            <div className="h-16 w-16 overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
-              <AssetImg path={mainDisplay?.image ?? null} alt={main.title} fit="contain" variant="product" className="h-full w-full" imageClassName="p-1.5" />
-            </div>
+            <CatalogProductImage path={mainDisplay?.image ?? null} alt={main.title} variant="thumb" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-white">{main.title}</div>
               {mainDisplay ? <div className="mt-0.5 text-sm text-orange-400">₪{mainDisplay.price.toFixed(2)}</div> : null}
@@ -226,9 +242,7 @@ export function RelatedProductsModal({
                     : "border-zinc-800 bg-zinc-900/60 hover:border-blue-500/50"
                 }`}
               >
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#1a1f2e_0%,_#0a0a0f_70%)]">
-                  <AssetImg path={p.image} alt={name} fit="contain" variant="product" className="h-full w-full" imageClassName="p-1.5" />
-                </div>
+                <CatalogProductImage path={p.image} alt={name} variant="thumb" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-white">{name}</div>
                   <div className="mt-0.5 text-sm text-orange-400">₪{p.price.toFixed(2)}</div>

@@ -10,6 +10,12 @@ import {
   useState,
 } from "react";
 import {
+  beginAddToCartDebug,
+  endAddToCartDebug,
+  isCartDebugEnabled,
+  recordAddToCartApiCall,
+} from "@/lib/cart/add-to-cart-debug";
+import {
   cartSubtotal,
   CART_REMOVAL_TOAST_HE,
   validatedCartCount,
@@ -37,7 +43,13 @@ type CartContextValue = {
   removalToast: string | null;
   dismissRemovalToast: () => void;
   setQuantity: (key: string, quantity: number) => void;
-  addItem: (productId: string, qty?: number, optionIds?: string[]) => void;
+  addItem: (
+    productId: string,
+    qty?: number,
+    optionIds?: string[],
+    productSnapshot?: CartProductRow,
+    debugSource?: string,
+  ) => void;
   removeItem: (key: string) => void;
   clear: () => void;
   /** Re-sync with server; returns false if cart became empty or items were removed. */
@@ -49,6 +61,11 @@ const CartContext = createContext<CartContextValue | null>(null);
 function storageKey() {
   const id = process.env.NEXT_PUBLIC_STORE_ID ?? "desigma";
   return `cart:${id}`;
+}
+
+function productsStorageKey() {
+  const id = process.env.NEXT_PUBLIC_STORE_ID ?? "desigma";
+  return `cart-products:${id}`;
 }
 
 function makeKey(productId: string, optionIds: string[]) {
@@ -78,14 +95,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const syncGen = useRef(0);
   const skipNextSync = useRef(false);
   const initialSyncDone = useRef(false);
+  const lastAddDebugSession = useRef<string | null>(null);
 
   const productsMap = useMemo(() => new Map(Object.entries(products)), [products]);
   const cartCount = useMemo(
     () =>
       validatedCartCount(items, productsMap, {
-        trustItemsWithoutProduct: syncedOnce,
+        /** Optimistic badge — sync validates in background */
+        trustItemsWithoutProduct: true,
       }),
-    [items, productsMap, syncedOnce],
+    [items, productsMap],
   );
   const subtotal = useMemo(() => cartSubtotal(items, productsMap), [items, productsMap]);
 
@@ -99,12 +118,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
     const gen = ++syncGen.current;
     setSyncing(true);
+    const syncT0 = performance.now();
+    const debugSession = lastAddDebugSession.current;
     try {
+      if (isCartDebugEnabled()) {
+        console.log("[addToCart] cart/sync START", {
+          lines: lines.length,
+          debounceMs: initialSyncDone.current ? 800 : 0,
+          debugSession,
+        });
+      }
       const res = await fetch("/api/cart/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(debugSession ? { "X-Cart-Debug-Session": debugSession } : {}),
+        },
         body: JSON.stringify({ items: lines }),
       });
+      const syncMs = performance.now() - syncT0;
+      recordAddToCartApiCall("/api/cart/sync", "POST", syncMs, res.status);
       if (!res.ok) {
         console.error("Cart sync HTTP error", res.status);
         setSyncedOnce(true);
@@ -114,18 +147,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         items: CartLine[];
         removed?: boolean;
         products?: Record<string, CartProductRow>;
+        debug?: {
+          prismaQueries?: number;
+          loadProductsMs?: number;
+          totalMs?: number;
+          prismaOperations?: Array<{ model: string; action: string; ms: number }>;
+        };
       };
-      if (gen !== syncGen.current) return { items: lines, removed: false };
-
-      console.log("Cart Items (client after sync)", lines);
-      for (const line of lines) {
-        const found = data.products?.[line.productId];
-        console.log({
-          productId: line.productId,
-          storeId: process.env.NEXT_PUBLIC_STORE_ID ?? "desigma",
-          foundProduct: !!found,
+      if (isCartDebugEnabled()) {
+        console.log("[addToCart] cart/sync END", {
+          httpMs: Math.round(syncMs),
+          server: data.debug,
         });
       }
+      if (gen !== syncGen.current) return { items: lines, removed: false };
 
       setProducts(data.products ?? {});
       const next = data.items ?? [];
@@ -153,6 +188,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
+      const rawProducts = localStorage.getItem(productsStorageKey());
+      if (rawProducts) {
+        const parsedProducts = JSON.parse(rawProducts) as unknown;
+        if (parsedProducts && typeof parsedProducts === "object" && !Array.isArray(parsedProducts)) {
+          setProducts(parsedProducts as Record<string, CartProductRow>);
+        }
+      }
       const raw = localStorage.getItem(storageKey());
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
@@ -191,12 +233,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (Object.keys(products).length > 0) {
+      localStorage.setItem(productsStorageKey(), JSON.stringify(products));
+    }
+  }, [products, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (skipNextSync.current) {
       skipNextSync.current = false;
       return;
     }
     const isFirst = !initialSyncDone.current;
-    const delay = isFirst ? 0 : 120;
+    const delay = isFirst ? 0 : 800;
     const timer = window.setTimeout(() => {
       void runSync(items, true).then(() => {
         initialSyncDone.current = true;
@@ -214,22 +263,55 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addItem = useCallback((productId: string, qty = 1, optionIds: string[] = []) => {
-    setItems((prev) => {
-      const key = makeKey(productId, optionIds);
-      const cur = prev.find((p) => p.key === key);
-      const q = (cur?.quantity ?? 0) + qty;
-      const rest = prev.filter((p) => p.key !== key);
-      rest.push({
-        key,
-        productId,
-        quantity: q,
-        optionIds: Array.from(new Set(optionIds.map(String))).sort(),
+  const addItem = useCallback(
+    (
+      productId: string,
+      qty = 1,
+      optionIds: string[] = [],
+      productSnapshot?: CartProductRow,
+      debugSource = "addItem",
+    ) => {
+      const sessionId = beginAddToCartDebug(debugSource, {
+        routerRefresh: false,
+        revalidatePath: false,
+        storeSettingsFetch: false,
+        productRefetch: false,
+        variantsRefetch: false,
+        stockRefetch: false,
+        dbBeforeUi: false,
       });
-      return rest.sort((a, b) => a.key.localeCompare(b.key));
-    });
-    setLastAddedAt(Date.now());
-  }, []);
+
+      if (productSnapshot) {
+        setProducts((prev) => ({
+          ...prev,
+          [productId]: productSnapshot,
+        }));
+      }
+      setItems((prev) => {
+        const key = makeKey(productId, optionIds);
+        const cur = prev.find((p) => p.key === key);
+        const q = (cur?.quantity ?? 0) + qty;
+        const rest = prev.filter((p) => p.key !== key);
+        rest.push({
+          key,
+          productId,
+          quantity: q,
+          optionIds: Array.from(new Set(optionIds.map(String))).sort(),
+        });
+        return rest.sort((a, b) => a.key.localeCompare(b.key));
+      });
+      setLastAddedAt(Date.now());
+      lastAddDebugSession.current = sessionId;
+
+      endAddToCartDebug(sessionId, {
+        productId,
+        qty,
+        hasSnapshot: Boolean(productSnapshot),
+        storage: "localStorage (items + products cache); DB via debounced /api/cart/sync",
+      });
+    },
+    [],
+  );
 
   const removeItem = useCallback((key: string) => {
     setItems((prev) => prev.filter((p) => p.key !== key));

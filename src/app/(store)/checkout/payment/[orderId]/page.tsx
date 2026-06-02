@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { AssetImg } from "@/components/asset-img";
 import { CheckoutPayButton } from "@/components/storefront/checkout-pay-button";
 import { prisma } from "@/lib/prisma";
+import { perfLog, perfTimed } from "@/lib/server/perf-log";
+import { getPrismaQueryScope, runWithPrismaQueryScope } from "@/lib/server/prisma-query-scope";
 import { SITE_NAME, STORE_ID } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -52,23 +54,38 @@ export default async function PaymentPage({
 }) {
   const { orderId } = await params;
   const storeId = STORE_ID;
+  const pageT0 = performance.now();
 
-  const [order, settings, store] = await Promise.all([
-    prisma.order.findFirst({
-      where: { id: orderId, storeId },
-      include: {
-        items: { orderBy: { id: "asc" } },
-      },
-    }),
-    prisma.storeSettings.findUnique({
-      where: { storeId },
-      select: { logoUrl: true, currency: true },
-    }),
-    prisma.store.findUnique({
-      where: { id: storeId },
-      select: { name: true },
-    }),
-  ]);
+  const { order, settings, store } = await runWithPrismaQueryScope("checkout.payment", async () => {
+    const [orderRow, settingsRow, storeRow] = await Promise.all([
+      perfTimed("checkout.payment.order", () =>
+        prisma.order.findFirst({
+          where: { id: orderId, storeId },
+          include: {
+            items: { orderBy: { id: "asc" } },
+          },
+        }),
+      ),
+      perfTimed("checkout.payment.settings", () =>
+        prisma.storeSettings.findUnique({
+          where: { storeId },
+          select: { logoUrl: true, currency: true },
+        }),
+      ),
+      perfTimed("checkout.payment.store", () =>
+        prisma.store.findUnique({
+          where: { id: storeId },
+          select: { name: true },
+        }),
+      ),
+    ]);
+    const scope = getPrismaQueryScope();
+    perfLog("checkout.payment.page.total", performance.now() - pageT0, {
+      prismaQueries: scope?.count ?? 0,
+      orderId,
+    });
+    return { order: orderRow, settings: settingsRow, store: storeRow };
+  });
 
   if (!order) notFound();
 

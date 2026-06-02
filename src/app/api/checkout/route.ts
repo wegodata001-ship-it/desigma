@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DeliveryType, OrderPaymentStatus, OrderStatus, Prisma } from "@prisma/client";
+import { DeliveryType, OrderPaymentStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { STORE_ID } from "@/lib/store";
 import { decodeSessionToken } from "@/lib/auth/session";
@@ -16,9 +16,11 @@ import {
   deliveryUiBehavior,
   formatStructuredAddress,
 } from "@/lib/shipping/delivery-behavior";
-import { isLinePurchasable, sanitizeCartLines } from "@/lib/cart/availability";
+import { isLinePurchasable, lineUnitPrice, sanitizeCartLines } from "@/lib/cart/availability";
 import type { CartLine } from "@/lib/cart/types";
-import { loadCartProductsForStore } from "@/lib/cart/load-cart-products";
+import { loadCartProductsForStore, type CartProductView } from "@/lib/cart/load-cart-products";
+import { perfLog } from "@/lib/server/perf-log";
+import { getPrismaQueryScope, runWithPrismaQueryScope } from "@/lib/server/prisma-query-scope";
 import { EMAIL_MISMATCH_MESSAGE, normalizeEmail } from "@/lib/email-confirm-validation";
 import { ORDER_STATUS_AWAITING_PAYMENT } from "@/lib/orders/order-status-values";
 
@@ -62,6 +64,7 @@ const Schema = z
   });
 
 export async function POST(req: Request) {
+  const routeT0 = performance.now();
   const storeId = STORE_ID;
   let json: unknown;
   try {
@@ -88,8 +91,14 @@ export async function POST(req: Request) {
     optionIds: i.optionIds ?? [],
   }));
 
+  return runWithPrismaQueryScope("checkout.post", async () => {
   const productIds = Array.from(new Set(cartInput.map((i) => i.productId)));
+  const loadProductsT0 = performance.now();
   const productsMap = await loadCartProductsForStore(storeId, productIds);
+  perfLog("checkout.post.load-products", performance.now() - loadProductsT0, {
+    productIds: productIds.length,
+  });
+
   const { items: validCartLines } = sanitizeCartLines(cartInput, productsMap);
 
   if (validCartLines.length !== cartInput.length) {
@@ -101,7 +110,7 @@ export async function POST(req: Request) {
 
   for (const line of validCartLines) {
     const snapshot = productsMap.get(line.productId);
-    if (!isLinePurchasable(snapshot, line)) {
+    if (!snapshot?.active || !isLinePurchasable(snapshot, line)) {
       return NextResponse.json(
         { error: "אין מספיק מלאי לאחד המוצרים בעגלה." },
         { status: 400 },
@@ -109,37 +118,41 @@ export async function POST(req: Request) {
     }
   }
 
-  const products = await prisma.product.findMany({
-    where: {
-      storeId,
-      id: { in: validCartLines.map((i) => i.productId) },
-      active: true,
-    },
-  });
-
-  if (products.length !== validCartLines.length) {
-    return NextResponse.json(
-      { error: "אחד או יותר מהמוצרים בעגלה אינם זמינים יותר. עדכנו את העגלה ונסו שוב." },
-      { status: 400 },
-    );
-  }
-
-  const byId = new Map(products.map((p) => [p.id, p]));
-  type Line = { product: (typeof products)[number]; quantity: number; optionIds: string[] };
+  type Line = { product: CartProductView; quantity: number; optionIds: string[] };
   const lines: Line[] = validCartLines.map((i) => {
-    const product = byId.get(i.productId);
+    const product = productsMap.get(i.productId);
     if (!product) throw new Error("missing product");
     return { product, quantity: i.quantity, optionIds: i.optionIds ?? [] };
   });
 
-  const delivery = await prisma.deliveryOption.findFirst({
-    where: { id: body.deliveryOptionId, storeId, active: true },
-  });
+  const parallelT0 = performance.now();
+  const [delivery, storeSettings, coupon, loyalty, customerUser] = await Promise.all([
+    prisma.deliveryOption.findFirst({
+      where: { id: body.deliveryOptionId, storeId, active: true },
+    }),
+    prisma.storeSettings.findUnique({ where: { storeId } }),
+    body.couponCode?.trim()
+      ? prisma.coupon.findFirst({
+          where: { storeId, code: body.couponCode.trim(), active: true },
+        })
+      : Promise.resolve(null),
+    prisma.loyaltySettings.findUnique({ where: { storeId } }),
+    session?.role === "CUSTOMER" && session.storeId === storeId
+      ? prisma.user.findFirst({
+          where: { id: session.userId, storeId },
+          select: {
+            emailVerified: true,
+            customerProfile: { select: { id: true, pointsBalance: true } },
+          },
+        })
+      : Promise.resolve(null),
+  ]);
+  perfLog("checkout.post.parallel-meta", performance.now() - parallelT0);
+
   if (!delivery) {
     return NextResponse.json({ error: "Invalid delivery option" }, { status: 400 });
   }
 
-  const storeSettings = await prisma.storeSettings.findUnique({ where: { storeId } });
   if (
     delivery.type === DeliveryType.PICKUP &&
     storeSettings &&
@@ -176,28 +189,17 @@ export async function POST(req: Request) {
   if (
     session?.role === "CUSTOMER" &&
     session.storeId === storeId &&
-    (storeSettings?.requireEmailVerificationForCheckout ?? true)
+    (storeSettings?.requireEmailVerificationForCheckout ?? true) &&
+    customerUser &&
+    !customerUser.emailVerified
   ) {
-    const u = await prisma.user.findFirst({
-      where: { id: session.userId, storeId },
-      select: { emailVerified: true },
-    });
-    if (u && !u.emailVerified) {
-      return NextResponse.json(
-        { error: "יש לאמת את כתובת האימייל לפני ביצוע הזמנה." },
-        { status: 403 },
-      );
-    }
+    return NextResponse.json(
+      { error: "יש לאמת את כתובת האימייל לפני ביצוע הזמנה." },
+      { status: 403 },
+    );
   }
 
-  let coupon = null as Awaited<ReturnType<typeof prisma.coupon.findFirst>>;
-  if (body.couponCode?.trim()) {
-    coupon = await prisma.coupon.findFirst({
-      where: { storeId, code: body.couponCode.trim(), active: true },
-    });
-  }
-
-  const subtotal = await computeSubtotalWithVariants(storeId, lines);
+  const subtotal = computeSubtotalFromSnapshots(lines);
   const { discount: couponDiscount, code: appliedCoupon } = computeCouponDiscount(
     coupon,
     subtotal,
@@ -206,20 +208,8 @@ export async function POST(req: Request) {
   const deliveryPrice = Number(delivery.price);
   const remainingAfterCoupon = Math.round((subtotal + deliveryPrice - couponDiscount) * 100) / 100;
 
-  let customerProfileId: string | null = null;
-  let pointsBalance = 0;
-  if (session?.role === "CUSTOMER" && session.storeId === storeId) {
-    const user = await prisma.user.findFirst({
-      where: { id: session.userId, storeId },
-      include: { customerProfile: true },
-    });
-    if (user?.customerProfile) {
-      customerProfileId = user.customerProfile.id;
-      pointsBalance = user.customerProfile.pointsBalance;
-    }
-  }
-
-  const loyalty = await prisma.loyaltySettings.findUnique({ where: { storeId } });
+  const customerProfileId = customerUser?.customerProfile?.id ?? null;
+  const pointsBalance = customerUser?.customerProfile?.pointsBalance ?? 0;
   const redeemReq = body.redeemPoints ?? 0;
   const { discount: pointsDiscount, pointsUsed } = computePointsDiscount(
     loyalty,
@@ -237,16 +227,36 @@ export async function POST(req: Request) {
 
   const deliveryName = snapshotDeliveryName(delivery, "he");
 
+  const linePricing = lines.map((line) => {
+    const unit = lineUnitPrice(line.product, line.optionIds);
+    return {
+      line,
+      unit,
+      lineTotal: Math.round(unit * line.quantity * 100) / 100,
+    };
+  });
+
+  const productImages = await prisma.productImage.findMany({
+    where: { storeId, productId: { in: productIds } },
+    orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }],
+    select: { productId: true, url: true, isMain: true, sortOrder: true },
+  });
+  const imageByProduct = new Map<string, string | null>();
+  for (const pid of productIds) {
+    const imgs = productImages.filter((i) => i.productId === pid);
+    const main = imgs.find((i) => i.isMain) ?? imgs[0];
+    imageByProduct.set(pid, main?.url ?? null);
+  }
+
   let orderId: string;
   let orderNumber: string;
   try {
     const created = await prisma.$transaction(
       async (tx) => {
-        const settings = await tx.storeSettings.findUnique({ where: { storeId } });
-        if (!settings) {
+        if (!storeSettings) {
           throw new Error("Store settings missing");
         }
-        const nextOrderNumber = `${settings.orderNumberPrefix}-${settings.nextOrderNumber}`;
+        const nextOrderNumber = `${storeSettings.orderNumberPrefix}-${storeSettings.nextOrderNumber}`;
         await tx.storeSettings.update({
           where: { storeId },
           data: { nextOrderNumber: { increment: 1 } },
@@ -277,32 +287,23 @@ export async function POST(req: Request) {
         },
       });
 
-    for (const line of lines) {
-      const unit = await computeUnitPriceWithVariants(tx, storeId, line.product.id, line.optionIds);
-      const lineTotal = Math.round(unit * line.quantity * 100) / 100;
-      const mainImg = await tx.productImage.findFirst({
-        where: { productId: line.product.id, storeId, isMain: true },
-      });
-      const anyImg = mainImg
-        ? mainImg
-        : await tx.productImage.findFirst({
-            where: { productId: line.product.id, storeId },
-            orderBy: { sortOrder: "asc" },
-          });
-      await tx.orderItem.create({
-        data: {
-          storeId,
-          orderId: order.id,
-          productId: line.product.id,
-          productName: line.product.name_he,
-          productImage: anyImg?.url ?? null,
-          variantOptionIds: Array.from(new Set((line.optionIds ?? []).map(String))).filter(Boolean),
-          quantity: line.quantity,
-          unitPrice: new Prisma.Decimal(unit),
-          totalPrice: new Prisma.Decimal(lineTotal),
-        },
-      });
-    }
+        await Promise.all(
+          linePricing.map(({ line, unit, lineTotal }) =>
+            tx.orderItem.create({
+              data: {
+                storeId,
+                orderId: order.id,
+                productId: line.product.id,
+                productName: line.product.name_he,
+                productImage: imageByProduct.get(line.product.id) ?? line.product.image,
+                variantOptionIds: Array.from(new Set((line.optionIds ?? []).map(String))).filter(Boolean),
+                quantity: line.quantity,
+                unitPrice: new Prisma.Decimal(unit),
+                totalPrice: new Prisma.Decimal(lineTotal),
+              },
+            }),
+          ),
+        );
 
         return { orderId: order.id, orderNumber: order.orderNumber };
       },
@@ -318,8 +319,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const currency =
-    (await prisma.storeSettings.findUnique({ where: { storeId } }))?.currency ?? "ILS";
+  const currency = storeSettings?.currency ?? "ILS";
+  const scope = getPrismaQueryScope();
+  perfLog("checkout.post.total", performance.now() - routeT0, {
+    prismaQueries: scope?.count ?? 0,
+    lines: lines.length,
+  });
 
   return NextResponse.json({
     orderId,
@@ -327,35 +332,15 @@ export async function POST(req: Request) {
     total,
     currency,
   });
-}
-
-async function computeUnitPriceWithVariants(
-  tx: Prisma.TransactionClient,
-  storeId: string,
-  productId: string,
-  optionIds: string[],
-): Promise<number> {
-  const base = await tx.product.findFirst({ where: { id: productId, storeId }, select: { price: true } });
-  const basePrice = base ? Number(base.price) : 0;
-  const uniq = Array.from(new Set((optionIds ?? []).map(String)));
-  if (uniq.length === 0) return basePrice;
-
-  const opts = await tx.productVariantOption.findMany({
-    where: {
-      id: { in: uniq },
-      group: { productId },
-    },
-    select: { priceAdd: true },
   });
-  const add = opts.reduce((s, o) => s + Number(o.priceAdd), 0);
-  return Math.round((basePrice + add) * 100) / 100;
 }
 
-async function computeSubtotalWithVariants(storeId: string, lines: Array<{ product: { id: string }; quantity: number; optionIds: string[] }>): Promise<number> {
+function computeSubtotalFromSnapshots(
+  lines: Array<{ product: CartProductView; quantity: number; optionIds: string[] }>,
+): number {
   let s = 0;
   for (const line of lines) {
-    const unit = await computeUnitPriceWithVariants(prisma, storeId, line.product.id, line.optionIds);
-    s += unit * line.quantity;
+    s += lineUnitPrice(line.product, line.optionIds) * line.quantity;
   }
   return Math.round(s * 100) / 100;
 }

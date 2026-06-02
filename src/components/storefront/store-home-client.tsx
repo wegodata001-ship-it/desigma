@@ -8,7 +8,7 @@ import { BenefitsRow } from "@/components/storefront/benefits-row";
 import { FeaturedCategories } from "@/components/storefront/featured-categories";
 import { ProductGrid } from "@/components/storefront/product-grid";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
-import type { StoreProductCardData } from "@/components/storefront/product-card";
+import type { ProductCardData } from "@/components/product-card";
 import { pickLocalized } from "@/lib/localized";
 
 type Banner = {
@@ -54,14 +54,14 @@ export function StoreHomeClient({
   banners: Banner[];
   promoBanners: Banner[];
   categories: Category[];
-  featured: StoreProductCardData[];
-  bestSellers: StoreProductCardData[];
-  gamingCollection: StoreProductCardData[];
-  laptopDeals: StoreProductCardData[];
-  audioCollection: StoreProductCardData[];
-  smartHome: StoreProductCardData[];
-  airConditionerDeals: StoreProductCardData[];
-  newArrivals: StoreProductCardData[];
+  featured: ProductCardData[];
+  bestSellers: ProductCardData[];
+  gamingCollection: ProductCardData[];
+  laptopDeals: ProductCardData[];
+  audioCollection: ProductCardData[];
+  smartHome: ProductCardData[];
+  airConditionerDeals: ProductCardData[];
+  newArrivals: ProductCardData[];
 }) {
   const { t, dir, lang } = useStoreI18n();
   const brands = [

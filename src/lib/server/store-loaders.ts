@@ -75,19 +75,25 @@ export async function getStoreSettings(): Promise<StoreSettingsPublic> {
     // ignore
   }
 
-  const row = await safeQuery(
-    "getStoreSettings",
+  const { perfTimed } = await import("@/lib/server/perf-log");
+  const row = await perfTimed(
+    "layout.storeSettings",
     () =>
-      prisma.storeSettings.findUnique({
-        where: { storeId: ctx.storeId },
-        select: {
-          supportEmail: true,
-          whatsappPhone: true,
-          registrationEnabled: true,
-        },
-      }),
-    null,
-    { timeoutMs: 12_000 },
+      safeQuery(
+        "getStoreSettings",
+        () =>
+          prisma.storeSettings.findUnique({
+            where: { storeId: ctx.storeId },
+            select: {
+              supportEmail: true,
+              whatsappPhone: true,
+              registrationEnabled: true,
+            },
+          }),
+        null,
+        { timeoutMs: 12_000 },
+      ),
+    { storeId: ctx.storeId },
   );
 
   logLoaderOk("getStoreSettings", {
@@ -108,23 +114,29 @@ export async function getCategories(selectImage = false): Promise<CategoryNavIte
     // ignore
   }
 
-  const categories = await safeQuery(
-    "getCategories",
+  const { perfTimed } = await import("@/lib/server/perf-log");
+  const categories = await perfTimed(
+    "layout.categories",
     () =>
-      prisma.category.findMany({
-        where: { storeId: ctx.storeId, active: true },
-        orderBy: { sortOrder: "asc" },
-        select: {
-          id: true,
-          parentId: true,
-          name_he: true,
-          name_ar: true,
-          name_en: true,
-          ...(selectImage ? { imageUrl: true } : {}),
-        },
-      }),
-    [] as CategoryNavItem[],
-    { timeoutMs: 12_000 },
+      safeQuery(
+        "getCategories",
+        () =>
+          prisma.category.findMany({
+            where: { storeId: ctx.storeId, active: true },
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              parentId: true,
+              name_he: true,
+              name_ar: true,
+              name_en: true,
+              ...(selectImage ? { imageUrl: true } : {}),
+            },
+          }),
+        [] as CategoryNavItem[],
+        { timeoutMs: 12_000 },
+      ),
+    { storeId: ctx.storeId },
   );
 
   logLoaderOk("getCategories", {

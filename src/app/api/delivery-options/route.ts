@@ -5,10 +5,25 @@ import { getStoreId } from "@/lib/store-config";
 export async function GET() {
   const storeId = getStoreId();
   const [settings, options] = await Promise.all([
-    prisma.storeSettings.findUnique({ where: { storeId } }),
+    prisma.storeSettings.findUnique({
+      where: { storeId },
+      select: { pickupEnabled: true },
+    }),
     prisma.deliveryOption.findMany({
       where: { storeId, active: true },
       orderBy: { sortOrder: "asc" },
+      select: {
+        id: true,
+        name_he: true,
+        name_ar: true,
+        name_en: true,
+        type: true,
+        price: true,
+        eta_he: true,
+        eta_ar: true,
+        eta_en: true,
+        sortOrder: true,
+      },
     }),
   ]);
 

@@ -1,28 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { AssetImg } from "@/components/asset-img";
+import { ProductImageStudioModal, type StudioSource } from "@/components/admin/product-image-studio-modal";
+import {
+  CatalogProductImage,
+  CatalogProductImagePreview,
+} from "@/components/storefront/catalog-product-image";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { resolveUploadErrorMessage, type UploadErrorMessages } from "@/lib/admin-upload-errors";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
+import { ProductImageGalleryCard } from "@/components/admin/product-image-gallery-grid";
 import {
   addProductImage,
   deleteProductImage,
-  setMainProductImage,
+  replaceProductImage,
   setProductImageOrder,
 } from "@/app/admin/actions";
-import { compressImageForUpload } from "@/lib/image-compress-client";
-import { withTimeout } from "@/lib/promise-with-timeout";
+import type { GalleryDisplayConfig } from "@/lib/product-gallery-display";
+import type { StudioExportBundle } from "@/lib/product-image-studio/types";
 
 export type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 
-const COMPRESS_TIMEOUT_MS = 45_000;
-
-function sortImages(im: Img[]): Img[] {
-  return [...im].sort((a, b) => {
-    if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
-    return a.sortOrder - b.sortOrder;
-  });
+/** Visual list order (sortOrder). First image = main — same as Shopify / server reorder. */
+function withVisualOrder(im: Img[]): Img[] {
+  return [...im]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((img, i) => ({ ...img, sortOrder: i, isMain: i === 0 }));
 }
 
 function ImageToast({
@@ -56,21 +59,27 @@ export function ProductImagesSection({
   product,
   selectedFiles,
   setSelectedFiles,
-  onRefresh,
+  galleryDisplay,
+  onImagesChange,
   onCopyToColors,
 }: {
   product: { id: string; images: Img[] } | null;
   selectedFiles: File[];
   setSelectedFiles: (files: File[]) => void;
-  onRefresh?: () => void;
+  galleryDisplay: GalleryDisplayConfig;
+  /** Optimistic patch — avoids router.refresh() after each image save */
+  onImagesChange?: (productId: string, images: Img[]) => void;
   onCopyToColors?: () => void;
 }) {
   const { t } = useAdminI18n();
   const fileInputId = useId();
-  const [ordered, setOrdered] = useState<Img[]>(() => sortImages(product?.images ?? []));
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [ordered, setOrdered] = useState<Img[]>(() => withVisualOrder(product?.images ?? []));
   const [busy, setBusy] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [studioSource, setStudioSource] = useState<StudioSource | null>(null);
+  const [fileQueue, setFileQueue] = useState<File[]>([]);
 
   const uploadMessages: UploadErrorMessages = useMemo(
     () => ({
@@ -86,12 +95,17 @@ export function ProductImagesSection({
   );
 
   useEffect(() => {
-    const next = sortImages(product?.images ?? []);
-    setOrdered(next);
-    setActiveIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
+    setOrdered(withVisualOrder(product?.images ?? []));
   }, [product?.images]);
 
-  const active = ordered[activeIdx] ?? null;
+  const patchImages = useCallback(
+    (next: Img[]) => {
+      const normalized = withVisualOrder(next);
+      setOrdered(normalized);
+      if (product?.id) onImagesChange?.(product.id, normalized);
+    },
+    [onImagesChange, product?.id],
+  );
 
   const showSuccess = useCallback(() => {
     setToast({ kind: "success", message: t("autoSaved") });
@@ -108,24 +122,71 @@ export function ProductImagesSection({
     [uploadMessages],
   );
 
-  const persistOrder = useCallback(
-    async (next: Img[]) => {
-      if (!product) return;
-      const mainFirst = sortImages(next);
-      const fd = new FormData();
-      fd.append("productId", product.id);
-      fd.append("orderedIds", JSON.stringify(mainFirst.map((x) => x.id)));
-      const res = await setProductImageOrder(fd);
-      if (!res.ok) throw new Error(res.error);
-      setOrdered(mainFirst);
-      onRefresh?.();
+  const persistBundle = useCallback(
+    async (bundle: StudioExportBundle, opts: { imageId?: string; setMain?: boolean }) => {
+      if (!product?.id) return;
+      const path = await uploadAdminAsset(bundle.display, "products", {
+        entityId: product.id,
+        originalName: bundle.display.name,
+        compress: false,
+      });
+      const base = path.replace(/\.[^/]+$/, "");
+      const stem = base.split("/").pop() ?? "image";
+      void Promise.all([
+        uploadAdminAsset(bundle.original, "products", {
+          entityId: product.id,
+          originalName: `${stem}-original.jpg`,
+          compress: false,
+        }),
+        uploadAdminAsset(bundle.thumb, "products", {
+          entityId: product.id,
+          originalName: `${stem}-thumb.webp`,
+          compress: false,
+        }),
+      ]).catch(() => undefined);
+
+      if (opts.imageId) {
+        const fd = new FormData();
+        fd.append("imageId", opts.imageId);
+        fd.append("url", path);
+        const res = await replaceProductImage(fd);
+        if (!res.ok) throw new Error(res.error);
+        patchImages(ordered.map((im) => (im.id === opts.imageId ? { ...im, url: path } : im)));
+      } else {
+        const fd = new FormData();
+        fd.append("productId", product.id);
+        fd.append("url", path);
+        fd.append("sortOrder", String(ordered.length));
+        if (opts.setMain) fd.append("isMain", "on");
+        const res = await addProductImage(fd);
+        if (!res.ok) throw new Error(res.error);
+        patchImages([...ordered, res.data]);
+      }
       showSuccess();
     },
-    [product, onRefresh, showSuccess],
+    [ordered, patchImages, product?.id, showSuccess],
   );
 
-  const uploadFiles = useCallback(
-    async (list: FileList | File[]) => {
+  const openStudioForQueue = useCallback((queue: File[]) => {
+    if (queue.length === 0) return;
+    setFileQueue(queue.slice(1));
+    setStudioSource({ kind: "file", file: queue[0]! });
+  }, []);
+
+  const queueNextStudio = useCallback(() => {
+    setFileQueue((q) => {
+      if (q.length === 0) {
+        setStudioSource(null);
+        return q;
+      }
+      const [next, ...rest] = q;
+      setStudioSource({ kind: "file", file: next! });
+      return rest;
+    });
+  }, []);
+
+  const onFilesPicked = useCallback(
+    (list: FileList | File[]) => {
       const arr = Array.from(list).filter((f) => f.type.startsWith("image/"));
       if (arr.length === 0) return;
 
@@ -133,110 +194,87 @@ export function ProductImagesSection({
         setSelectedFiles([...selectedFiles, ...arr]);
         return;
       }
+      openStudioForQueue(arr);
+    },
+    [openStudioForQueue, product?.id, selectedFiles, setSelectedFiles],
+  );
 
+  const handleStudioSave = useCallback(
+    async (bundle: StudioExportBundle, meta: { imageId?: string }) => {
       setBusy(true);
-      setToast(null);
       try {
-        let order = ordered.length;
         const hadImages = ordered.length > 0;
-        const added: Img[] = [];
-
-        for (let i = 0; i < arr.length; i++) {
-          let file = arr[i];
-          try {
-            file = await withTimeout(
-              compressImageForUpload(file),
-              COMPRESS_TIMEOUT_MS,
-              "compress",
-            );
-          } catch (e) {
-            if (e instanceof Error && e.message === "FILE_TOO_LARGE") throw e;
-            if (e instanceof Error && e.message.startsWith("TIMEOUT:")) throw e;
-          }
-
-          const path = await uploadAdminAsset(file, "products", {
-            entityId: product.id,
-            originalName: arr[i].name,
-            compress: false,
-          });
-
-          const fd = new FormData();
-          fd.append("productId", product.id);
-          fd.append("url", path);
-          fd.append("sortOrder", String(order++));
-          if (!hadImages && i === 0) fd.append("isMain", "on");
-
-          const res = await addProductImage(fd);
-          if (!res.ok) throw new Error(res.error);
-          added.push(res.data);
+        await persistBundle(bundle, {
+          imageId: meta.imageId,
+          setMain: !hadImages && !meta.imageId,
+        });
+        if (fileQueue.length > 0) {
+          queueNextStudio();
+        } else {
+          setStudioSource(null);
         }
-
-        setOrdered((prev) => sortImages([...prev, ...added]));
-        setActiveIdx((prev) => (ordered.length === 0 ? 0 : prev));
-        showSuccess();
-        onRefresh?.();
       } catch (e) {
-        showError(e, "uploadFiles");
+        showError(e, "studioSave");
+        throw e;
       } finally {
         setBusy(false);
       }
     },
-    [
-      product,
-      ordered.length,
-      selectedFiles,
-      setSelectedFiles,
-      onRefresh,
-      showSuccess,
-      showError,
-    ],
+    [fileQueue.length, ordered.length, persistBundle, queueNextStudio, showError],
   );
 
-  const handleSetMain = async (imageId: string) => {
-    if (!product) return;
-    setBusy(true);
-    setToast(null);
-    try {
+  const persistOrder = useCallback(
+    async (next: Img[]) => {
+      if (!product) return;
+      const normalized = withVisualOrder(next);
       const fd = new FormData();
       fd.append("productId", product.id);
-      fd.append("imageId", imageId);
-      const res = await setMainProductImage(fd);
+      fd.append("orderedIds", JSON.stringify(normalized.map((x) => x.id)));
+      const res = await setProductImageOrder(fd);
       if (!res.ok) throw new Error(res.error);
-      setOrdered((prev) =>
-        sortImages(
-          prev.map((im) => ({
-            ...im,
-            isMain: im.id === imageId,
-          })),
-        ),
-      );
+      patchImages(normalized);
       showSuccess();
-      onRefresh?.();
-    } catch (e) {
-      showError(e, "handleSetMain");
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+    [patchImages, product, showSuccess],
+  );
 
-  const handleMove = async (idx: number, direction: "left" | "right") => {
-    if (idx <= 0) return;
-    const target = direction === "left" ? idx - 1 : idx + 1;
-    if (target <= 0 || target >= ordered.length) return;
-    const next = [...ordered];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setActiveIdx(target);
-    setBusy(true);
-    setToast(null);
-    try {
-      await persistOrder(next.map((x, i) => ({ ...x, sortOrder: i })));
-    } catch (e) {
-      showError(e, "handleMove");
-      setOrdered(sortImages(product?.images ?? []));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const reorderImages = useCallback(
+    (fromId: string, toId: string) => {
+      const fromIdx = ordered.findIndex((im) => im.id === fromId);
+      const toIdx = ordered.findIndex((im) => im.id === toId);
+      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return null;
+      const next = [...ordered];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved!);
+      return withVisualOrder(next);
+    },
+    [ordered],
+  );
+
+  const handleGalleryDrop = useCallback(
+    async (targetId: string) => {
+      if (!dragId || dragId === targetId || !product) return;
+      const next = reorderImages(dragId, targetId);
+      if (!next) return;
+      setDragId(null);
+      setDropTargetId(null);
+      setBusy(true);
+      setToast(null);
+      try {
+        await persistOrder(next);
+      } catch (e) {
+        showError(e, "handleGalleryDrop");
+        setOrdered(withVisualOrder(product.images ?? []));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [dragId, onImagesChange, persistOrder, product, reorderImages, showError],
+  );
+
+  const openEditStudio = useCallback((im: Img) => {
+    setStudioSource({ kind: "url", url: im.url, imageId: im.id });
+  }, []);
 
   const handleDelete = async (imageId: string) => {
     if (!product) return;
@@ -247,10 +285,8 @@ export function ProductImagesSection({
       fd.append("imageId", imageId);
       const res = await deleteProductImage(fd);
       if (!res.ok) throw new Error(res.error);
-      setOrdered((prev) => sortImages(prev.filter((im) => im.id !== imageId)));
-      setActiveIdx((i) => Math.max(0, Math.min(i, ordered.length - 2)));
+      patchImages(ordered.filter((im) => im.id !== imageId));
       showSuccess();
-      onRefresh?.();
     } catch (e) {
       showError(e, "handleDelete");
     } finally {
@@ -275,6 +311,17 @@ export function ProductImagesSection({
         <ImageToast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} />
       )}
 
+      <ProductImageStudioModal
+        open={studioSource != null}
+        source={studioSource}
+        galleryDisplay={galleryDisplay}
+        onClose={() => {
+          setStudioSource(null);
+          setFileQueue([]);
+        }}
+        onSave={handleStudioSave}
+      />
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-900">{t("productImagesLabel")}</div>
@@ -297,7 +344,7 @@ export function ProductImagesSection({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          void uploadFiles(e.dataTransfer.files);
+          onFilesPicked(e.dataTransfer.files);
         }}
       >
         <input
@@ -306,10 +353,10 @@ export function ProductImagesSection({
           multiple
           className="hidden"
           id={fileInputId}
-          disabled={busy}
+          disabled={busy || studioSource != null}
           onChange={(e) => {
             const f = e.currentTarget.files;
-            if (f?.length) void uploadFiles(f);
+            if (f?.length) onFilesPicked(f);
             e.currentTarget.value = "";
           }}
         />
@@ -317,7 +364,7 @@ export function ProductImagesSection({
           <p className="text-sm font-medium text-slate-700">{t("dropImagesHere")}</p>
           <label
             htmlFor={fileInputId}
-            className={`cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 ${busy ? "pointer-events-none opacity-50" : ""}`}
+            className={`cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 ${busy || studioSource ? "pointer-events-none opacity-50" : ""}`}
           >
             {busy ? t("saving") : t("chooseImages")}
           </label>
@@ -329,90 +376,51 @@ export function ProductImagesSection({
           <span className="text-xs font-semibold text-amber-900">
             {t("pendingUploads")} ({selectedFiles.length}) — {t("pendingUploadsSaveHint")}
           </span>
-          <ul className="mt-3 flex flex-wrap gap-3">
+          <ul className="mt-3 flex flex-col gap-4">
             {pendingPreviews.map((p) => (
-              <li key={p.url}>
-                <AssetImg path={p.url} alt="" className="h-20 w-20 rounded-xl border object-cover" />
+              <li key={p.url} className="max-w-md">
+                <span className="mb-1 block truncate text-[11px] font-medium text-amber-900">{p.name}</span>
+                <CatalogProductImagePreview src={p.url} alt={p.name} variant="card" />
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {product && ordered.length > 0 && active && (
-        <div className="space-y-4">
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
-            <div className="relative mx-auto aspect-square max-h-[420px] w-full max-w-lg">
-              <AssetImg path={active.url} alt="" className="object-contain" />
-            </div>
-            {active.isMain && (
-              <span className="absolute start-3 top-3 rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white shadow">
-                ★ {t("main")}
-              </span>
-            )}
-          </div>
-
-          {active && (
-            <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
-              <span className="w-full text-center text-xs font-medium text-slate-500">{t("imageActions")}</span>
-              {!active.isMain && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void handleSetMain(active.id)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                >
-                  ⭐ {t("setAsMainImage")}
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={busy || activeIdx <= 1}
-                onClick={() => void handleMove(activeIdx, "left")}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                title={t("moveImageRight")}
-              >
-                ⬆ {t("moveImageRight")}
-              </button>
-              <button
-                type="button"
-                disabled={busy || activeIdx === 0 || activeIdx >= ordered.length - 1}
-                onClick={() => void handleMove(activeIdx, "right")}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                title={t("moveImageLeft")}
-              >
-                ⬇ {t("moveImageLeft")}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleDelete(active.id)}
-                className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                🗑 {t("deleteShort")}
-              </button>
-            </div>
-          )}
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
+      {product && ordered.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">{t("dragReorderHint")}</p>
+          <p className="text-xs font-medium text-blue-800">{t("firstImageIsMain")}</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {ordered.map((im, idx) => (
-              <button
+              <ProductImageGalleryCard
                 key={im.id}
-                type="button"
-                onClick={() => setActiveIdx(idx)}
-                className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition md:h-24 md:w-24 ${
-                  idx === activeIdx
-                    ? "border-blue-600 shadow-md ring-2 ring-blue-300"
-                    : "border-slate-200 hover:border-blue-400"
-                }`}
-              >
-                <AssetImg path={im.url} alt="" className="object-cover" />
-                {im.isMain && (
-                  <span className="absolute bottom-0 inset-x-0 bg-blue-600/95 py-0.5 text-center text-[10px] font-bold text-white">
-                    {t("main")}
-                  </span>
-                )}
-              </button>
+                image={im}
+                index={idx}
+                busy={busy || studioSource != null}
+                isDragging={dragId === im.id}
+                isDropTarget={dropTargetId === im.id && dragId !== im.id}
+                editLabel={t("editImage")}
+                mainLabel={t("main")}
+                deleteLabel={t("deleteShort")}
+                dragHandleLabel={t("dragReorderHint")}
+                onEdit={() => openEditStudio(im)}
+                onDelete={() => void handleDelete(im.id)}
+                onDragStart={() => setDragId(im.id)}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setDropTargetId(null);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragId && dragId !== im.id) setDropTargetId(im.id);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void handleGalleryDrop(im.id);
+                }}
+              />
             ))}
           </div>
         </div>

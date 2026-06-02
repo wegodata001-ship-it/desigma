@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
+import { pickProductImageUrl } from "@/lib/product-images";
 
 export async function GET(req: Request) {
   const storeId = getStoreId();
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   const products = await prisma.product.findMany({
     where: { storeId, id: { in: ids }, active: true },
     include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 1 },
+      images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
     },
   });
 
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
       oldPrice: p.oldPrice ? Number(p.oldPrice) : null,
       discountPercent: p.discountPercent ?? null,
       stock: p.stock,
-      image: p.images[0]?.url ?? null,
+      image: pickProductImageUrl(p.images),
     })),
   });
 }

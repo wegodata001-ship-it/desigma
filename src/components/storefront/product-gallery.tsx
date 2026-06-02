@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AssetImg } from "@/components/asset-img";
-import { resolvePublicAssetSrc } from "@/lib/assets-path";
+import { CatalogProductImage } from "@/components/storefront/catalog-product-image";
 import { lockBodyScroll } from "@/lib/modal-scroll-lock";
 
 function GalleryMainFrame({
@@ -28,13 +27,10 @@ function GalleryMainFrame({
   safe: { id: string; url: string }[];
 }) {
   const touchStartX = useRef<number | null>(null);
-  const [hoverZoom, setHoverZoom] = useState(false);
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-950 via-black to-zinc-950 ${
-        lightbox ? "h-full min-h-[min(80vh,880px)]" : "aspect-square"
-      }`}
+      className={`group relative w-full ${lightbox ? "h-full min-h-[min(80vh,880px)]" : ""}`}
       onTouchStart={(e) => {
         touchStartX.current = e.touches[0]?.clientX ?? null;
       }}
@@ -54,14 +50,14 @@ function GalleryMainFrame({
         aria-label={title}
         onClick={onOpenLightbox}
       />
-      <div
-        className={`relative z-0 flex h-full w-full items-center justify-center p-4 transition duration-500 md:p-8 ${
-          hoverZoom ? "scale-[1.06]" : "scale-100"
-        }`}
-        onMouseEnter={() => setHoverZoom(true)}
-        onMouseLeave={() => setHoverZoom(false)}
-      >
-        <AssetImg path={currentUrl} alt={title} fit="contain" variant="product" className="h-full w-full" imageClassName="p-2 md:p-4" />
+      <div className="relative z-0 h-full min-h-[inherit] w-full">
+        <CatalogProductImage
+          path={currentUrl}
+          alt={title}
+          variant="gallery-main"
+          priority
+          frameClassName={lightbox ? "!h-[min(80vh,880px)] border-zinc-700" : ""}
+        />
       </div>
       {safeLength > 1 && (
         <>
@@ -104,6 +100,37 @@ function GalleryMainFrame({
         </>
       )}
     </div>
+  );
+}
+
+function GalleryThumb({
+  url,
+  title,
+  selected,
+  onSelect,
+}: {
+  url: string;
+  title: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`shrink-0 transition ${
+        selected ? "ring-2 ring-orange-500/30" : ""
+      }`}
+    >
+      <CatalogProductImage
+        path={url}
+        alt={title}
+        variant="thumb"
+        frameClassName={
+          selected ? "border-orange-500" : "border-zinc-800 hover:border-zinc-600"
+        }
+      />
+    </button>
   );
 }
 
@@ -165,25 +192,13 @@ export function ProductGallery({
       {safe.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {safe.map((img, idx) => (
-            <button
-              type="button"
+            <GalleryThumb
               key={img.id}
-              onClick={() => setSelected(idx)}
-              className={`group/thumb relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition md:h-24 md:w-24 ${
-                idx === selected
-                  ? "border-orange-500 ring-2 ring-orange-500/30"
-                  : "border-zinc-800 hover:border-zinc-600"
-              }`}
-            >
-              <AssetImg
-                path={img.url}
-                alt={title}
-                fit="contain"
-                variant="product"
-                className="h-full w-full"
-                imageClassName="p-1 transition group-hover/thumb:scale-105"
-              />
-            </button>
+              url={img.url}
+              title={title}
+              selected={idx === selected}
+              onSelect={() => setSelected(idx)}
+            />
           ))}
         </div>
       )}
@@ -219,20 +234,13 @@ export function ProductGallery({
               {safe.length > 1 && (
                 <div className="mt-4 flex shrink-0 justify-center gap-2 overflow-x-auto">
                   {safe.map((img, idx) => (
-                    <button
+                    <GalleryThumb
                       key={img.id}
-                      type="button"
-                      onClick={() => setSelected(idx)}
-                      className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 ${
-                        idx === selected ? "border-orange-500" : "border-zinc-700"
-                      }`}
-                    >
-                      <img
-                        src={resolvePublicAssetSrc(img.url)}
-                        alt=""
-                        className="h-full w-full object-contain object-center p-1"
-                      />
-                    </button>
+                      url={img.url}
+                      title={title}
+                      selected={idx === selected}
+                      onSelect={() => setSelected(idx)}
+                    />
                   ))}
                 </div>
               )}

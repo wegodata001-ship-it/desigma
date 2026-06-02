@@ -25,12 +25,15 @@ export async function SiteHeader() {
     logServerComponentError("SiteHeader.session", e, path);
   }
 
+  const isCheckoutRoute = path.startsWith("/checkout");
   let categories: Awaited<ReturnType<typeof getNavigation>> = [];
-  try {
-    categories = await getNavigation();
-  } catch (e) {
-    await logDbFailure("SiteHeader.getNavigation", e, { ...ctx, path });
-    categories = [];
+  if (!isCheckoutRoute) {
+    try {
+      categories = await getNavigation();
+    } catch (e) {
+      await logDbFailure("SiteHeader.getNavigation", e, { ...ctx, path });
+      categories = [];
+    }
   }
 
   const role = session?.role ?? null;
@@ -40,6 +43,7 @@ export async function SiteHeader() {
     storeId: ctx.storeId,
     storeSlug: ctx.storeSlug,
     path,
+    isCheckoutRoute,
     categoriesCount: categories?.length ?? 0,
     isLoggedIn,
   });

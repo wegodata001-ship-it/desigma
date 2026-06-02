@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
+import type { CartProductRow } from "@/components/cart-context";
+import { useCart } from "@/components/cart-context";
 import { ProductGallery } from "@/components/storefront/product-gallery";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
+import { pickLocalizedSpecs } from "@/lib/product-specs";
+import { ProductSpecs } from "@/components/storefront/product-specs";
+import type { ProductCardData } from "@/components/product-card";
+import { ProductGrid } from "@/components/storefront/product-grid";
 import { RelatedProductsModal } from "@/components/storefront/related-products-modal";
 import { isColorVariantGroup } from "@/lib/variant-group-kind";
+import { buildProductGalleryImages, pickProductImageUrl } from "@/lib/product-images";
 
 type VariantOption = {
   id: string;
@@ -39,18 +46,39 @@ type ProductDetails = {
   description_he: string | null;
   description_ar: string | null;
   description_en: string | null;
+  specs_he?: unknown;
+  specs_ar?: unknown;
+  specs_en?: unknown;
   price: number;
   oldPrice: number | null;
   discountPercent: number | null;
   stock: number;
   tags?: string[];
   category: { name_he: string; name_ar: string; name_en: string };
-  images: { id: string; url: string }[];
+  images: { id: string; url: string; isMain?: boolean; sortOrder?: number }[];
   variantGroups: VariantGroup[];
   relatedProducts: RelatedProduct[];
 };
 
+function relatedToProductCard(p: RelatedProduct): ProductCardData {
+  return {
+    id: p.id,
+    name_he: p.name_he,
+    name_ar: p.name_ar,
+    name_en: p.name_en,
+    description_he: null,
+    description_ar: null,
+    description_en: null,
+    price: p.price,
+    oldPrice: null,
+    discountPercent: null,
+    stock: p.stock,
+    image: p.image,
+  };
+}
+
 export function StoreProductDetailClient({ product }: { product: ProductDetails }) {
+  const { addItem } = useCart();
   const { lang, dir } = useStoreI18n();
   const [qty, setQty] = useState(1);
   const [crossSellOpen, setCrossSellOpen] = useState(false);
@@ -64,6 +92,7 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
   });
   const title = pickLocalized(product, "name", lang);
   const desc = pickLocalized(product, "description", lang);
+  const technicalSpecs = pickLocalizedSpecs(product, lang);
   const selectedOptionIds = useMemo(() => Object.values(selectedByGroup).filter(Boolean), [selectedByGroup]);
   const selectedOptions = useMemo(() => {
     const byId = new Map<string, VariantOption>();
@@ -83,7 +112,17 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
     }
     return selectedOptions.find((o) => o.image)?.image ?? null;
   }, [product.variantGroups, selectedByGroup, selectedOptions]);
-  const specs = useMemo(
+
+  const galleryImages = useMemo(
+    () => buildProductGalleryImages(product.images, variantHeroImage),
+    [product.images, variantHeroImage],
+  );
+  const relatedCards = useMemo(
+    () => product.relatedProducts.map(relatedToProductCard),
+    [product.relatedProducts],
+  );
+
+  const metaLines = useMemo(
     () =>
       [
         `מק״ט: ${product.id.slice(0, 8).toUpperCase()}`,
@@ -92,6 +131,31 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
       ],
     [product.id, product.category, product.stock, lang],
   );
+
+  const cartSnapshot = useMemo((): CartProductRow => {
+    const variantOptions = (product.variantGroups ?? []).flatMap((g) =>
+      g.options.map((o) => ({
+        id: o.id,
+        stock: o.stock,
+        priceAdd: Number(o.priceAdd) || 0,
+      })),
+    );
+    return {
+      id: product.id,
+      active: product.stock > 0,
+      stock: product.stock,
+      price,
+      name_he: product.name_he,
+      name_ar: product.name_ar,
+      name_en: product.name_en,
+      image: pickProductImageUrl(product.images, variantHeroImage),
+      variantOptions: variantOptions.length ? variantOptions : undefined,
+    };
+  }, [product, price, variantHeroImage]);
+
+  const addMainToCartNow = () => {
+    addItem(product.id, qty, selectedOptionIds, cartSnapshot, "product-detail");
+  };
   return (
     <div dir={dir} className="mx-auto max-w-7xl px-4 py-8 pb-24 md:pb-8">
       <Link href="/products" className="text-sm text-orange-400 hover:underline">
@@ -99,13 +163,7 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
       </Link>
       <div className="mt-6 grid gap-8 rounded-3xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-5 md:grid-cols-2 md:p-8">
         <div>
-          <ProductGallery
-            title={title}
-            images={[
-              ...(variantHeroImage ? [{ id: "variant", url: variantHeroImage }] : []),
-              ...product.images,
-            ]}
-          />
+          <ProductGallery title={title} images={galleryImages} />
         </div>
         <div>
           <p className="text-sm text-zinc-400">{pickLocalized(product.category, "name", lang)}</p>
@@ -130,7 +188,9 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
               ))}
             </div>
           )}
-          {desc && <p className="mt-6 leading-relaxed text-zinc-300">{desc}</p>}
+          {desc ? (
+            <p className="mt-6 whitespace-pre-line leading-relaxed text-zinc-300">{desc}</p>
+          ) : null}
 
           {(product.variantGroups?.length ?? 0) > 0 && (
             <div className="mt-6 space-y-5">
@@ -198,13 +258,22 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
               <button
                 type="button"
                 disabled={product.stock <= 0}
-                onClick={() => setCrossSellOpen(true)}
+                onClick={() => {
+                  addMainToCartNow();
+                  setCrossSellOpen(true);
+                }}
                 className="w-full rounded-xl border border-orange-500/40 bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:-translate-y-0.5 hover:shadow-orange-700/40 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-400"
               >
                 {product.stock <= 0 ? "אזל מהמלאי" : "הוסף לסל"}
               </button>
             ) : (
-              <AddToCartButton productId={product.id} qty={qty} disabled={product.stock <= 0} optionIds={selectedOptionIds} />
+              <AddToCartButton
+                productId={product.id}
+                qty={qty}
+                disabled={product.stock <= 0}
+                optionIds={selectedOptionIds}
+                productSnapshot={cartSnapshot}
+              />
             )}
           </div>
         </div>
@@ -212,14 +281,21 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:col-span-2">
           <h3 className="text-lg font-semibold text-white">תיאור המוצר</h3>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-300">{desc || "אין תיאור זמין למוצר זה."}</p>
+          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-zinc-300">
+            {desc || "אין תיאור זמין למוצר זה."}
+          </p>
+          {technicalSpecs.length > 0 ? (
+            <div className="mt-6">
+              <ProductSpecs specs={technicalSpecs} />
+            </div>
+          ) : null}
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-          <h3 className="text-lg font-semibold text-white">מפרט</h3>
+          <h3 className="text-lg font-semibold text-white">מידע מהיר</h3>
           <ul className="mt-2 space-y-2 text-sm text-zinc-300">
-            {specs.map((s) => (
-              <li key={s} className="rounded border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                {s}
+            {metaLines.map((line) => (
+              <li key={line} className="rounded border border-zinc-800 bg-zinc-950/70 px-2 py-1">
+                {line}
               </li>
             ))}
           </ul>
@@ -231,18 +307,32 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
           </p>
         </div>
       </section>
+      {relatedCards.length > 0 ? (
+        <div className="mt-10 pb-4">
+          <ProductGrid title="מוצרים דומים" products={relatedCards} />
+        </div>
+      ) : null}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 p-3 md:hidden">
         {product.relatedProducts.length > 0 ? (
           <button
             type="button"
             disabled={product.stock <= 0}
-            onClick={() => setCrossSellOpen(true)}
+            onClick={() => {
+              addMainToCartNow();
+              setCrossSellOpen(true);
+            }}
             className="w-full rounded-xl border border-orange-500/40 bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:-translate-y-0.5 hover:shadow-orange-700/40 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-400"
           >
             {product.stock <= 0 ? "אזל מהמלאי" : "הוסף לסל"}
           </button>
         ) : (
-          <AddToCartButton productId={product.id} qty={qty} disabled={product.stock <= 0} optionIds={selectedOptionIds} />
+          <AddToCartButton
+            productId={product.id}
+            qty={qty}
+            disabled={product.stock <= 0}
+            optionIds={selectedOptionIds}
+            productSnapshot={cartSnapshot}
+          />
         )}
       </div>
 
@@ -256,8 +346,9 @@ export function StoreProductDetailClient({ product }: { product: ProductDetails 
             optionIds: selectedOptionIds,
             title,
           }}
-          mainDisplay={{ image: product.images[0]?.url ?? null, price }}
+          mainDisplay={{ image: pickProductImageUrl(product.images, variantHeroImage), price }}
           related={product.relatedProducts}
+          mainAlreadyInCart
         />
       )}
     </div>

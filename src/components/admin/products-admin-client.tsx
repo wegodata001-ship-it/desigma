@@ -9,14 +9,16 @@ import { ProductImagesSection } from "@/components/admin/product-images-section"
 import {
   ProductVariantsSection,
   copyProductImagesToColorVariants,
+  serializeVariantGroupsForSave,
   type VariantGroup,
   type VariantOption,
 } from "@/components/admin/product-variants-section";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import type { GalleryDisplayConfig } from "@/lib/product-gallery-display";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
+import { CREATE_PRODUCT_PERF, perfEnd, perfStart } from "@/lib/admin/create-product-perf";
 import {
-  addProductImage,
+  addProductImagesBatch,
   deleteAllStoreProducts,
   deleteProduct,
   upsertProduct,
@@ -26,6 +28,8 @@ import {
   adminVariantGroupsFromPreset,
   PRODUCT_TAGS,
 } from "@/lib/smartphone-catalog";
+import { ProductSpecsEditor } from "@/components/admin/product-specs-editor";
+import { serializeProductSpecs, specsForForm, type ProductSpecItem } from "@/lib/product-specs";
 
 type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 type RelatedProduct = { id: string; name_he: string; name_ar: string; name_en: string; price: number; image: string | null; sortOrder: number };
@@ -38,6 +42,9 @@ export type ProductRow = {
   description_he: string | null;
   description_ar: string | null;
   description_en: string | null;
+  specs_he: unknown;
+  specs_ar: unknown;
+  specs_en: unknown;
   price: number;
   oldPrice: number | null;
   discountPercent: number | null;
@@ -108,9 +115,19 @@ export function ProductsAdminClient({
     startTransition(() => router.refresh());
   }, [router]);
 
+  const handleProductImagesChange = useCallback((productId: string, images: Img[]) => {
+    setEditProduct((prev) => (prev && prev.id === productId ? { ...prev, images } : prev));
+  }, []);
+
   const handleUpsert = async (form: FormData, files: File[] | null, editing: ProductRow | null) => {
+    perfStart(CREATE_PRODUCT_PERF.total);
+    const clientT0 = performance.now();
+
+    perfStart(CREATE_PRODUCT_PERF.product);
     const res = await upsertProduct(form);
+    perfEnd(CREATE_PRODUCT_PERF.product, { ok: res.ok });
     if (!res.ok) {
+      perfEnd(CREATE_PRODUCT_PERF.total, { failed: "upsertProduct" });
       setToast(res.error);
       return;
     }
@@ -119,35 +136,61 @@ export function ProductsAdminClient({
     if (files?.length && pid) {
       const hadImages = (editing?.images.length ?? 0) > 0;
       let order = editing?.images.length ?? 0;
+      perfStart(CREATE_PRODUCT_PERF.images);
+      const uploadT0 = performance.now();
       try {
-        for (let i = 0; i < files.length; i++) {
-          const path = await uploadAdminAsset(files[i], "products", {
-            entityId: pid,
-            originalName: files[i].name,
-          });
-          const fd = new FormData();
-          fd.append("productId", pid);
-          fd.append("url", path);
-          fd.append("sortOrder", String(order++));
-          const setMain = !hadImages && i === 0;
-          fd.append("isMain", setMain ? "on" : "");
-          const ir = await addProductImage(fd);
-          if (!ir.ok) {
-            console.error("[handleUpsert] addProductImage failed", ir.error);
-            setToast(ir.error);
-            return;
-          }
+        const paths = await Promise.all(
+          files.map((file, i) =>
+            uploadAdminAsset(file, "products", {
+              entityId: pid,
+              originalName: file.name,
+            }).then((path) => ({ path, i })),
+          ),
+        );
+        const uploadMs = Math.round(performance.now() - uploadT0);
+        console.log("[create-product-perf] image-uploads-parallel", {
+          count: files.length,
+          uploadMs,
+        });
+
+        const batch = paths
+          .sort((a, b) => a.i - b.i)
+          .map(({ path, i }) => ({
+            url: path,
+            sortOrder: order++,
+            isMain: !hadImages && i === 0,
+          }));
+
+        const batchRes = await addProductImagesBatch({ productId: pid, images: batch });
+        if (!batchRes.ok) {
+          console.error("[handleUpsert] addProductImagesBatch failed", batchRes.error);
+          setToast(batchRes.error);
+          perfEnd(CREATE_PRODUCT_PERF.images, { failed: true });
+          perfEnd(CREATE_PRODUCT_PERF.total, { failed: "images" });
+          return;
         }
+        perfEnd(CREATE_PRODUCT_PERF.images, { count: files.length, uploadMs });
       } catch (e) {
         console.error("[handleUpsert] product image upload failed", e);
+        perfEnd(CREATE_PRODUCT_PERF.images, { error: true });
+        perfEnd(CREATE_PRODUCT_PERF.total, { failed: "images" });
         setToast(e instanceof Error ? e.message : t("imageSaveFailed"));
         return;
       }
     }
+
     setToast(t("savedSuccessfully"));
     setAddOpen(false);
     setEditProduct(null);
+
+    perfStart(CREATE_PRODUCT_PERF.revalidate);
     refresh();
+    perfEnd(CREATE_PRODUCT_PERF.revalidate, { note: "router.refresh() — RSC refetch admin list" });
+
+    perfEnd(CREATE_PRODUCT_PERF.total, {
+      clientMs: Math.round(performance.now() - clientT0),
+      hadImages: Boolean(files?.length),
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -298,6 +341,7 @@ export function ProductsAdminClient({
         size="xl"
       >
         <ProductForm
+          key="new-product"
           categories={categories}
           allProducts={products}
           galleryDisplay={galleryDisplay}
@@ -314,13 +358,14 @@ export function ProductsAdminClient({
       >
         {editProduct && (
           <ProductForm
+            key={editProduct.id}
             categories={categories}
             allProducts={products}
             galleryDisplay={galleryDisplay}
             product={editProduct}
             onSubmit={(fd, files) => handleUpsert(fd, files, editProduct)}
             onCancel={() => setEditProduct(null)}
-            onRefresh={refresh}
+            onImagesChange={handleProductImagesChange}
           />
         )}
       </AdminModal>
@@ -361,7 +406,7 @@ function ProductForm({
   product,
   onSubmit,
   onCancel,
-  onRefresh,
+  onImagesChange,
 }: {
   categories: CategoryOpt[];
   allProducts: ProductRow[];
@@ -369,7 +414,7 @@ function ProductForm({
   product?: ProductRow;
   onSubmit: (fd: FormData, files: File[] | null) => Promise<void>;
   onCancel: () => void;
-  onRefresh?: () => void;
+  onImagesChange?: (productId: string, images: Img[]) => void;
 }) {
   const [pending, setPending] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -414,6 +459,9 @@ function ProductForm({
   });
   const [relatedModalOpen, setRelatedModalOpen] = useState(false);
   const [relatedQuery, setRelatedQuery] = useState("");
+  const [specsHe, setSpecsHe] = useState<ProductSpecItem[]>(() => specsForForm(product?.specs_he));
+  const [specsAr, setSpecsAr] = useState<ProductSpecItem[]>(() => specsForForm(product?.specs_ar));
+  const [specsEn, setSpecsEn] = useState<ProductSpecItem[]>(() => specsForForm(product?.specs_en));
   const { t } = useAdminI18n();
 
   async function internalSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -427,11 +475,14 @@ function ProductForm({
       fd.set("sku", `SKU-${Date.now()}`);
     }
     const files = selectedFiles.length > 0 ? selectedFiles : null;
-    fd.set("variantGroups", JSON.stringify(variantGroups));
+    fd.set("variantGroups", JSON.stringify(serializeVariantGroupsForSave(variantGroups)));
     fd.set(
       "relatedProducts",
       JSON.stringify(relatedProducts.map((p, idx) => ({ id: p.id, sortOrder: idx }))),
     );
+    fd.set("specs_he", serializeProductSpecs(specsHe));
+    fd.set("specs_ar", serializeProductSpecs(specsAr));
+    fd.set("specs_en", serializeProductSpecs(specsEn));
     setPending(true);
     try {
       await onSubmit(fd, files);
@@ -478,29 +529,44 @@ function ProductForm({
           {t("productDescriptionHe")}
           <textarea
             name="description_he"
-            rows={2}
+            rows={6}
             defaultValue={product?.description_he ?? ""}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <ProductSpecsEditor
+          label={t("productSpecsTitleHe")}
+          specs={specsHe}
+          onChange={setSpecsHe}
+        />
         <label className="sm:col-span-3 text-xs font-medium text-slate-700">
           {t("productDescriptionAr")}
           <textarea
             name="description_ar"
-            rows={2}
+            rows={6}
             defaultValue={product?.description_ar ?? ""}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <ProductSpecsEditor
+          label={t("productSpecsTitleAr")}
+          specs={specsAr}
+          onChange={setSpecsAr}
+        />
         <label className="sm:col-span-3 text-xs font-medium text-slate-700">
           {t("productDescriptionEn")}
           <textarea
             name="description_en"
-            rows={2}
+            rows={6}
             defaultValue={product?.description_en ?? ""}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <ProductSpecsEditor
+          label={t("productSpecsTitleEn")}
+          specs={specsEn}
+          onChange={setSpecsEn}
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="text-xs font-medium text-slate-700">
@@ -598,7 +664,8 @@ function ProductForm({
         product={product ? { id: product.id, images: product.images } : null}
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
-        onRefresh={onRefresh}
+        galleryDisplay={galleryDisplay}
+        onImagesChange={onImagesChange}
         onCopyToColors={
           product && product.images.length > 0
             ? () => setVariantGroups((prev) => copyProductImagesToColorVariants(prev, product.images))

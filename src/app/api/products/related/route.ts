@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
+import { pickProductImageUrl } from "@/lib/product-images";
 
 export async function GET(req: Request) {
   const storeId = getStoreId();
@@ -11,14 +12,14 @@ export async function GET(req: Request) {
   const [main, related] = await Promise.all([
     prisma.product.findFirst({
       where: { storeId, id: productId, active: true },
-      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+      include: { images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 } },
     }),
     prisma.productRelatedProduct.findMany({
       where: { productId, product: { storeId } },
       orderBy: { sortOrder: "asc" },
       include: {
         relatedProduct: {
-          include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+          include: { images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 } },
         },
       },
     }),
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
       name_en: main.name_en,
       price: Number(main.price),
       stock: main.stock,
-      image: main.images[0]?.url ?? null,
+      image: pickProductImageUrl(main.images),
     },
     related: related
       .map((r) => r.relatedProduct)
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
         name_en: p.name_en,
         price: Number(p.price),
         stock: p.stock,
-        image: p.images[0]?.url ?? null,
+        image: pickProductImageUrl(p.images),
       })),
   });
 }

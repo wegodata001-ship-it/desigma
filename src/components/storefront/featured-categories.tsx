@@ -49,6 +49,10 @@ export function FeaturedCategories({ categories }: { categories: CategoryItem[] 
 
   const scroll = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: "smooth" });
 
+  if (mains.length === 0) {
+    return null;
+  }
+
   return (
     <section id="featured-categories" className="scroll-mt-24 rounded-3xl border border-zinc-800/70 bg-gradient-to-b from-zinc-950/80 to-black/90 px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-5 flex items-center justify-between gap-3 sm:mb-6">

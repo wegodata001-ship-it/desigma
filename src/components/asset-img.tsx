@@ -1,10 +1,13 @@
 import Image from "next/image";
+import { useState } from "react";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
+import { PRODUCT_CATALOG_BG, PRODUCT_IMAGE_QUALITY } from "@/lib/product-image-display";
 
 function ProductImageFallback({ className }: { className?: string }) {
   return (
     <div
-      className={`flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-zinc-900/80 to-zinc-950/90 ${className ?? ""}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-2 ${className ?? ""}`}
+      style={{ backgroundColor: PRODUCT_CATALOG_BG }}
       aria-hidden
     >
       <svg viewBox="0 0 64 64" className="h-14 w-14 text-zinc-600" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -26,6 +29,8 @@ export function AssetImg({
   fit = "cover",
   variant = "default",
   priority = false,
+  quality,
+  sizes,
 }: {
   path: string | null | undefined;
   alt: string;
@@ -36,6 +41,9 @@ export function AssetImg({
   fit?: AssetImgFit;
   variant?: "default" | "product";
   priority?: boolean;
+  /** Next/Image quality 1–100 (product catalog defaults to 92). */
+  quality?: number;
+  sizes?: string;
 }) {
   if (!path) {
     if (variant === "product") {
@@ -54,6 +62,59 @@ export function AssetImg({
 
   const src = resolvePublicAssetSrc(path);
   const fitClass = fit === "contain" ? "object-contain object-center" : "object-cover object-center";
+  const imageQuality = quality ?? (variant === "product" ? PRODUCT_IMAGE_QUALITY : 85);
+  const imageSizes =
+    sizes ??
+    (variant === "product"
+      ? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 260px"
+      : "(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw");
+
+  return (
+    <ProductImageInner
+      src={src}
+      alt={alt}
+      fitClass={fitClass}
+      imageQuality={imageQuality}
+      imageSizes={imageSizes}
+      priority={priority}
+      className={className}
+      imageClassName={imageClassName}
+    />
+  );
+}
+
+function ProductImageInner({
+  src,
+  alt,
+  fitClass,
+  imageQuality,
+  imageSizes,
+  priority,
+  className,
+  imageClassName,
+}: {
+  src: string;
+  alt: string;
+  fitClass: string;
+  imageQuality: number;
+  imageSizes: string;
+  priority?: boolean;
+  className?: string;
+  imageClassName?: string;
+}) {
+  const [useNative, setUseNative] = useState(false);
+
+  if (useNative) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={alt}
+        className={`h-full w-full ${fitClass} ${imageClassName ?? ""}`}
+        draggable={false}
+      />
+    );
+  }
 
   return (
     <span className={`relative block h-full w-full ${className ?? ""}`}>
@@ -62,14 +123,16 @@ export function AssetImg({
         alt={alt}
         fill
         priority={priority}
-        sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
+        quality={imageQuality}
+        sizes={imageSizes}
         className={`${fitClass} ${imageClassName ?? ""}`}
+        onError={() => setUseNative(true)}
       />
     </span>
   );
 }
 
-/** Storefront product thumbnail — contain, transparent-friendly, hover zoom. */
+/** @deprecated Prefer CatalogProductImage — kept for gradual migration. */
 export function ProductImage({
   path,
   alt,
@@ -88,8 +151,10 @@ export function ProductImage({
       fit="contain"
       variant="product"
       priority={priority}
+      quality={PRODUCT_IMAGE_QUALITY}
+      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 260px"
       className={className}
-      imageClassName="p-3 drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] transition duration-500 ease-out group-hover:scale-[1.06]"
+      imageClassName="h-full w-full object-contain object-center"
     />
   );
 }

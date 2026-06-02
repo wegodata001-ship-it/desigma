@@ -52,10 +52,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // desigma-shop.com → no admin routes
+  // desigma-shop.com → admin lives on portal (redirect, not opaque 403)
   if (splitDomains && onStorefront && !onAdminPortal) {
     if (pathname.startsWith("/admin") || pathname === "/login-admin") {
-      return forbidden();
+      const adminBase =
+        process.env.NEXT_PUBLIC_ADMIN_URL?.trim() ||
+        process.env.ADMIN_APP_URL?.trim() ||
+        "";
+      if (adminBase) {
+        const targetPath = pathname.startsWith("/admin") ? pathname : "/login-admin";
+        try {
+          const dest = new URL(targetPath, adminBase.endsWith("/") ? adminBase : `${adminBase}/`);
+          dest.search = req.nextUrl.search;
+          return NextResponse.redirect(dest);
+        } catch {
+          /* fall through */
+        }
+      }
+      return forbidden(
+        "ניהול החנות זמין רק בפורטל הניהול. היכנסו ל: https://portal.desigma-shop.com/login-admin",
+      );
     }
   }
 

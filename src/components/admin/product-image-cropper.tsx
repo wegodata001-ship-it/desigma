@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -11,6 +13,7 @@ import {
 } from "react";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { exportCropFromViewport } from "@/lib/image-compress-client";
+import { STUDIO_BG_HEX, type StudioBackground } from "@/lib/product-image-studio/types";
 import {
   autoFitTransform,
   cloneCropState,
@@ -37,6 +40,15 @@ const PRESETS: { id: CropPresetId; icon: string; labelKey: string }[] = [
   { id: "full-width", icon: "▭", labelKey: "cropPresetFullWidth" },
   { id: "mobile-hero", icon: "▮", labelKey: "cropPresetMobileHero" },
 ];
+
+/** Storefront product studio — 1:1, 4:5, 16:9 + square (free-style resize via crop handles). */
+export const STUDIO_CROP_PRESET_IDS: CropPresetId[] = ["product-card", "portrait", "banner", "square"];
+
+export type ProductImageCropperHandle = {
+  exportCropped: () => Promise<File>;
+  runSmartProduct: () => void;
+  runAutoFit: () => void;
+};
 
 type ViewportSize = { w: number; h: number };
 
@@ -163,21 +175,34 @@ function CropOverlayMask({
   );
 }
 
-export function ProductImageCropper({
-  src,
-  alt,
-  galleryDisplay,
-  busy,
-  onCancel,
-  onApply,
-}: {
-  src: string;
-  alt: string;
-  galleryDisplay: GalleryDisplayConfig;
-  busy?: boolean;
-  onCancel: () => void;
-  onApply: (file: File) => Promise<void>;
-}) {
+export const ProductImageCropper = forwardRef<
+  ProductImageCropperHandle,
+  {
+    src: string;
+    alt: string;
+    galleryDisplay: GalleryDisplayConfig;
+    busy?: boolean;
+    onCancel: () => void;
+    onApply?: (file: File) => Promise<void>;
+    /** Limit aspect presets (studio uses STUDIO_CROP_PRESET_IDS). */
+    presetIds?: CropPresetId[];
+    background?: StudioBackground;
+    hideApplyButton?: boolean;
+  }
+>(function ProductImageCropper(
+  {
+    src,
+    alt,
+    galleryDisplay,
+    busy,
+    onCancel,
+    onApply,
+    presetIds,
+    background = "white",
+    hideApplyButton = false,
+  },
+  ref,
+) {
   const { t } = useAdminI18n();
   const zoomSliderId = useId();
   const cropMaskId = useId().replace(/:/g, "");
@@ -266,6 +291,16 @@ export function ProductImageCropper({
     if (imageSize.w <= 0 || viewport.w <= 0) return;
     const nextTransform = autoFitTransform(imageSize.w, imageSize.h, crop, viewport.w, viewport.h);
     commitEditor((s) => ({ ...s, transform: nextTransform }));
+  }, [commitEditor, crop, imageSize, viewport]);
+
+  const runSmartProduct = useCallback(() => {
+    if (imageSize.w <= 0 || viewport.w <= 0) return;
+    const nextTransform = autoFitTransform(imageSize.w, imageSize.h, crop, viewport.w, viewport.h);
+    commitEditor((s) => ({
+      ...s,
+      transform: { ...nextTransform, zoom: clampZoom(nextTransform.zoom * 0.88) },
+      cropScale: Math.min(0.88, s.cropScale),
+    }));
   }, [commitEditor, crop, imageSize, viewport]);
 
   const resetView = useCallback(() => {
@@ -382,10 +417,29 @@ export function ProductImageCropper({
     resizeStart.current = { scale: editor.cropScale, y: e.clientY };
   };
 
+  const exportCropped = useCallback(async () => {
+    if (viewport.w <= 0) throw new Error("NO_VIEWPORT");
+    return exportCropFromViewport(src, viewport.w, viewport.h, crop, transform, {
+      background: STUDIO_BG_HEX[background],
+      mime: "image/webp",
+      quality: 0.91,
+    });
+  }, [background, crop, src, transform, viewport.h, viewport.w]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      exportCropped,
+      runSmartProduct,
+      runAutoFit,
+    }),
+    [exportCropped, runAutoFit, runSmartProduct],
+  );
+
   const handleApply = async () => {
-    if (viewport.w <= 0 || busy) return;
+    if (viewport.w <= 0 || busy || !onApply) return;
     try {
-      const file = await exportCropFromViewport(src, viewport.w, viewport.h, crop, transform);
+      const file = await exportCropped();
       await onApply(file);
       setSaveFlash(true);
       setTimeout(() => setSaveFlash(false), 600);
@@ -393,6 +447,10 @@ export function ProductImageCropper({
       /* load / CORS */
     }
   };
+
+  const visiblePresets = presetIds
+    ? PRESETS.filter((p) => presetIds.includes(p.id))
+    : PRESETS;
 
   const maxStyle = galleryMainMaxStyle(galleryDisplay);
   const canUndo = history.length > 1;
@@ -410,7 +468,7 @@ export function ProductImageCropper({
           {t("cropPresetGroup")}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-          {PRESETS.map((p) => (
+          {visiblePresets.map((p) => (
             <CropToolbarButton
               key={p.id}
               active={editor.preset === p.id}
@@ -468,6 +526,20 @@ export function ProductImageCropper({
         </div>
 
         <CropToolbarButton
+          title={t("rotate90")}
+          label={t("rotate90")}
+          disabled={busy}
+          onClick={() =>
+            commitEditor((s) => ({
+              ...s,
+              transform: { ...s.transform, rotation: (s.transform.rotation + 90) % 360 },
+            }))
+          }
+        >
+          ↻
+        </CropToolbarButton>
+
+        <CropToolbarButton
           title={t("cropAutoFit")}
           label={t("cropAutoFit")}
           disabled={busy}
@@ -476,6 +548,17 @@ export function ProductImageCropper({
         >
           ✦
         </CropToolbarButton>
+        {presetIds && (
+          <CropToolbarButton
+            title="התאם למוצר"
+            label="התאם למוצר"
+            disabled={busy}
+            className="border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100"
+            onClick={runSmartProduct}
+          >
+            ◎
+          </CropToolbarButton>
+        )}
 
         <div className="mx-0 hidden h-8 w-px bg-slate-200 sm:block" />
 
@@ -502,24 +585,26 @@ export function ProductImageCropper({
           ↺
         </CropToolbarButton>
 
-        <div className="ms-auto flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            {t("cancel")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void handleApply()}
-            className="min-h-11 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 disabled:opacity-50"
-          >
-            {busy ? t("saving") : t("mediaApplyCrop")}
-          </button>
-        </div>
+        {!hideApplyButton && (
+          <div className="ms-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onCancel}
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleApply()}
+              className="min-h-11 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy ? t("saving") : t("mediaApplyCrop")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
@@ -648,7 +733,7 @@ export function ProductImageCropper({
             viewport={viewport}
             crop={crop}
             transform={transform}
-            label={t("previewDesktop")}
+            label={t("previewProductPage")}
             frameClass="aspect-[4/3] w-full"
           />
           <CroppedLivePreview
@@ -673,4 +758,4 @@ export function ProductImageCropper({
       </div>
     </div>
   );
-}
+});

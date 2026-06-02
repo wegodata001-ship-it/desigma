@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { AdminModal } from "@/components/admin/admin-modal";
 import { AssetImg } from "@/components/asset-img";
 import { useAdminI18n } from "@/lib/admin-i18n";
 import { uploadAdminAsset } from "@/lib/admin-upload-client";
@@ -24,6 +26,41 @@ export type VariantGroup = {
   sortOrder: number;
   options: VariantOption[];
 };
+
+/** Payload sent to upsertProduct — strips client-only fields (id, uploading). */
+export function serializeVariantGroupsForSave(groups: VariantGroup[]) {
+  return groups.map((g, gi) => ({
+    name: g.name,
+    sortOrder: g.sortOrder ?? gi,
+    options: g.options.map((o, oi) => ({
+      value: o.value,
+      priceAdd: o.priceAdd,
+      stock: o.stock,
+      sku: o.sku,
+      image: o.image,
+      isDefault: o.isDefault,
+      sortOrder: o.sortOrder ?? oi,
+    })),
+  }));
+}
+
+type PendingDelete =
+  | { type: "option"; groupId: string; optionId: string }
+  | { type: "group"; groupId: string };
+
+function DeleteOptionButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-base text-red-700 transition hover:bg-red-100"
+      onClick={onClick}
+    >
+      🗑
+    </button>
+  );
+}
 
 export function copyProductImagesToColorVariants(
   groups: VariantGroup[],
@@ -53,12 +90,14 @@ function ColorOptionCard({
   productImages,
   productId,
   onChange,
+  onRequestDelete,
 }: {
   groupId: string;
   option: VariantOption;
   productImages: Img[];
   productId?: string;
   onChange: (groupId: string, optionId: string, patch: Partial<VariantOption>) => void;
+  onRequestDelete: (groupId: string, optionId: string) => void;
 }) {
   const { t } = useAdminI18n();
 
@@ -91,11 +130,17 @@ function ColorOptionCard({
             />
           </label>
         </div>
-        {option.isDefault && (
-          <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
-            {t("main")}
-          </span>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {option.isDefault && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
+              {t("main")}
+            </span>
+          )}
+          <DeleteOptionButton
+            title={t("deleteShort")}
+            onClick={() => onRequestDelete(groupId, option.id)}
+          />
+        </div>
       </div>
 
       <div className="mt-3">
@@ -173,12 +218,12 @@ function StorageOptionRow({
   groupId,
   option,
   onChange,
-  onDelete,
+  onRequestDelete,
 }: {
   groupId: string;
   option: VariantOption;
   onChange: (groupId: string, optionId: string, patch: Partial<VariantOption>) => void;
-  onDelete: (groupId: string, optionId: string) => void;
+  onRequestDelete: (groupId: string, optionId: string) => void;
 }) {
   const { t } = useAdminI18n();
 
@@ -222,13 +267,10 @@ function StorageOptionRow({
         />
         {t("variantDefaultOption")}
       </label>
-      <button
-        type="button"
-        className="ms-auto text-xs text-red-600 hover:underline"
-        onClick={() => onDelete(groupId, option.id)}
-      >
-        {t("deleteShort")}
-      </button>
+      <DeleteOptionButton
+        title={t("deleteShort")}
+        onClick={() => onRequestDelete(groupId, option.id)}
+      />
     </div>
   );
 }
@@ -247,6 +289,7 @@ export function ProductVariantsSection({
   onApplyPreset: (brand: "apple" | "samsung") => void;
 }) {
   const { t } = useAdminI18n();
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const patchOption = (groupId: string, optionId: string, patch: Partial<VariantOption>) => {
     setVariantGroups((prev) =>
@@ -267,15 +310,38 @@ export function ProductVariantsSection({
 
   const deleteOption = (groupId: string, optionId: string) => {
     setVariantGroups((prev) =>
-      prev.map((g) =>
-        g.id !== groupId
-          ? g
-          : {
-              ...g,
-              options: g.options.filter((o) => o.id !== optionId).map((o, idx) => ({ ...o, sortOrder: idx })),
-            },
-      ),
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        const remaining = g.options.filter((o) => o.id !== optionId);
+        const hadDefault = g.options.find((o) => o.id === optionId)?.isDefault;
+        const options = remaining.map((o, idx) => {
+          let isDefault = o.isDefault;
+          if (hadDefault && remaining.length > 0 && !remaining.some((x) => x.isDefault)) {
+            isDefault = idx === 0;
+          }
+          return { ...o, sortOrder: idx, isDefault };
+        });
+        return { ...g, options };
+      }),
     );
+  };
+
+  const deleteGroup = (groupId: string) => {
+    setVariantGroups((prev) =>
+      prev
+        .filter((g) => g.id !== groupId)
+        .map((g, idx) => ({ ...g, sortOrder: idx })),
+    );
+  };
+
+  const confirmPendingDelete = () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.type === "option") {
+      deleteOption(pendingDelete.groupId, pendingDelete.optionId);
+    } else {
+      deleteGroup(pendingDelete.groupId);
+    }
+    setPendingDelete(null);
   };
 
   const addOption = (groupId: string, isColor: boolean) => {
@@ -303,8 +369,40 @@ export function ProductVariantsSection({
     );
   };
 
+  const confirmMessage =
+    pendingDelete?.type === "group"
+      ? t("confirmDeleteVariantGroup")
+      : t("confirmDeleteVariantOption");
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <AdminModal
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title={t("delete")}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 px-5 pb-4">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm"
+              onClick={() => setPendingDelete(null)}
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              onClick={confirmPendingDelete}
+            >
+              {t("yes")}
+            </button>
+          </div>
+        }
+      >
+        <p className="px-5 pb-2 text-sm text-slate-700">{confirmMessage}</p>
+      </AdminModal>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-900">{t("productVariantsTitle")}</div>
@@ -376,10 +474,10 @@ export function ProductVariantsSection({
                     </button>
                     <button
                       type="button"
-                      className="text-xs text-red-600 hover:underline"
-                      onClick={() => setVariantGroups((prev) => prev.filter((x) => x.id !== g.id))}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() => setPendingDelete({ type: "group", groupId: g.id })}
                     >
-                      {t("deleteVariantGroup")}
+                      🗑 {t("deleteVariantGroup")}
                     </button>
                   </div>
                 </div>
@@ -394,6 +492,9 @@ export function ProductVariantsSection({
                         productImages={productImages}
                         productId={productId}
                         onChange={patchOption}
+                        onRequestDelete={(gid, oid) =>
+                          setPendingDelete({ type: "option", groupId: gid, optionId: oid })
+                        }
                       />
                     ))}
                     {g.options.length === 0 && (
@@ -408,7 +509,9 @@ export function ProductVariantsSection({
                         groupId={g.id}
                         option={o}
                         onChange={patchOption}
-                        onDelete={deleteOption}
+                        onRequestDelete={(gid, oid) =>
+                          setPendingDelete({ type: "option", groupId: gid, optionId: oid })
+                        }
                       />
                     ))}
                     {g.options.length === 0 && (
@@ -423,9 +526,14 @@ export function ProductVariantsSection({
                         groupId={g.id}
                         option={o}
                         onChange={patchOption}
-                        onDelete={deleteOption}
+                        onRequestDelete={(gid, oid) =>
+                          setPendingDelete({ type: "option", groupId: gid, optionId: oid })
+                        }
                       />
                     ))}
+                    {g.options.length === 0 && (
+                      <p className="text-center text-xs text-slate-500">{t("noVariantOptions")}</p>
+                    )}
                   </div>
                 )}
               </div>

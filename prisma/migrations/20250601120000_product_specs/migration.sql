@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "specs_he" JSONB;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "specs_ar" JSONB;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "specs_en" JSONB;

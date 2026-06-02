@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useEffect } from "react";
 import { useCart } from "@/components/cart-context";
-import { AssetImg } from "@/components/asset-img";
+import { CatalogProductImage } from "@/components/storefront/catalog-product-image";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { pickLocalized } from "@/lib/localized";
 import { availableStockForLine, isLinePurchasable, lineUnitPrice } from "@/lib/cart/availability";
@@ -75,9 +75,12 @@ export default function CartPage() {
               key={line.key}
               className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4"
             >
-              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-                <AssetImg path={p.image} alt={pickLocalized(p, "name", lang)} className="h-full w-full object-cover" />
-              </div>
+              <CatalogProductImage
+                path={p.image}
+                alt={pickLocalized(p, "name", lang)}
+                variant="thumb"
+                frameClassName="border-zinc-800"
+              />
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-zinc-100">{pickLocalized(p, "name", lang)}</div>
                 <div className="mt-1 text-sm text-zinc-400">

@@ -1,6 +1,6 @@
 "use client";
 
-import type { StoreProductCardData } from "@/components/storefront/product-card";
+import type { ProductCardData } from "@/components/product-card";
 
 export type SmartphoneFilterState = {
   brand: "" | "apple" | "samsung";
@@ -23,9 +23,9 @@ export const DEFAULT_SMARTPHONE_FILTERS: SmartphoneFilterState = {
 };
 
 export function applySmartphoneFilters(
-  products: StoreProductCardData[],
+  products: ProductCardData[],
   filters: SmartphoneFilterState,
-): StoreProductCardData[] {
+): ProductCardData[] {
   return products.filter((p) => {
     if (filters.brand === "apple" && p.brand !== "apple") return false;
     if (filters.brand === "samsung" && p.brand !== "samsung") return false;

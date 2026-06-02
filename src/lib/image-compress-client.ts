@@ -1,7 +1,9 @@
 /** Client-side compression before upload — avoids huge payloads without native sharp dependency. */
 
+import { UPLOAD_CANVAS_QUALITY, UPLOAD_JPEG_QUALITY, UPLOAD_WEBP_QUALITY } from "@/lib/product-image-display";
+
 const MAX_DIMENSION = 2400;
-const DEFAULT_JPEG_QUALITY = 0.85;
+const DEFAULT_JPEG_QUALITY = UPLOAD_JPEG_QUALITY;
 const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 
 export type CompressOptions = {
@@ -30,8 +32,8 @@ export async function compressImageForUpload(file: File, opts?: CompressOptions)
   }
 
   const maxDim = opts?.maxDimension ?? MAX_DIMENSION;
-  const mime = opts?.mime ?? "image/jpeg";
-  const quality = opts?.quality ?? DEFAULT_JPEG_QUALITY;
+  const mime = opts?.mime ?? "image/webp";
+  const quality = opts?.quality ?? (mime === "image/webp" ? UPLOAD_WEBP_QUALITY : DEFAULT_JPEG_QUALITY);
 
   const bitmap = await loadImageBitmap(file);
   try {
@@ -87,7 +89,7 @@ export async function rotateImageFromUrl90CW(url: string): Promise<File> {
             else resolve(new File([blob], "rotated.jpg", { type: "image/jpeg" }));
           },
           "image/jpeg",
-          0.92,
+          UPLOAD_CANVAS_QUALITY,
         );
       } catch (e) {
         reject(e);
@@ -124,7 +126,7 @@ function drawTransformedImage(
 
 async function canvasToJpegFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
   const blob: Blob | null = await new Promise((resolve) =>
-    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92),
+    canvas.toBlob((b) => resolve(b), "image/jpeg", UPLOAD_CANVAS_QUALITY),
   );
   if (!blob) throw new Error("blob");
   return new File([blob], name, { type: "image/jpeg" });
@@ -193,6 +195,11 @@ export async function exportCropFromViewport(
     flipH: boolean;
     flipV: boolean;
   },
+  options?: {
+    background?: string;
+    mime?: "image/webp" | "image/jpeg";
+    quality?: number;
+  },
 ): Promise<File> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
@@ -213,8 +220,11 @@ export async function exportCropFromViewport(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("no context");
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, outW, outH);
+  const bg = options?.background ?? "#ffffff";
+  if (bg !== "transparent") {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, outW, outH);
+  }
 
   const iw = img.naturalWidth;
   const ih = img.naturalHeight;
@@ -230,7 +240,14 @@ export async function exportCropFromViewport(
   ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
   ctx.restore();
 
-  return canvasToJpegFile(canvas, "cropped.jpg");
+  const mime = options?.mime ?? "image/jpeg";
+  const quality = options?.quality ?? (mime === "image/webp" ? UPLOAD_WEBP_QUALITY : UPLOAD_CANVAS_QUALITY);
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b), mime, quality),
+  );
+  if (!blob) throw new Error("blob");
+  const ext = mime === "image/webp" ? "webp" : "jpg";
+  return new File([blob], `cropped.${ext}`, { type: mime });
 }
 
 export async function flipImageFromUrl(url: string, flipH: boolean, flipV: boolean): Promise<File> {
@@ -257,7 +274,7 @@ export async function rotateImageFile90CW(file: File): Promise<File> {
     ctx.rotate(Math.PI / 2);
     ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
     const blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92),
+      canvas.toBlob((b) => resolve(b), "image/jpeg", UPLOAD_CANVAS_QUALITY),
     );
     if (!blob) return file;
     const base = file.name.replace(/\.[^.]+$/, "") || "image";

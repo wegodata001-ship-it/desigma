@@ -25,7 +25,7 @@ export type CropEditorState = {
 export const CROP_PRESET_ASPECT: Record<CropPresetId, number> = {
   "product-card": 1,
   square: 1,
-  portrait: 3 / 4,
+  portrait: 4 / 5,
   banner: 16 / 9,
   "full-width": 2 / 1,
   "mobile-hero": 9 / 16,

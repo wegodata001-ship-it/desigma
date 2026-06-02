@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import type { CartProductSnapshot } from "@/lib/cart/availability";
+import { pickProductImageUrl } from "@/lib/product-images";
 
 export type CartProductView = CartProductSnapshot & {
   name_he: string;
@@ -19,7 +20,7 @@ export async function loadCartProductsForStore(
   const products = await prisma.product.findMany({
     where: { storeId, id: { in: productIds } },
     include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 1 },
+      images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
       variantGroups: {
         include: {
           options: { select: { id: true, stock: true, priceAdd: true } },
@@ -45,7 +46,7 @@ export async function loadCartProductsForStore(
       name_he: p.name_he,
       name_ar: p.name_ar,
       name_en: p.name_en,
-      image: p.images[0]?.url ?? null,
+      image: pickProductImageUrl(p.images),
       variantOptions: variantOptions.length ? variantOptions : undefined,
     });
   }

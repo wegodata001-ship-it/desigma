@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import { ProductGrid } from "@/components/storefront/product-grid";
 import { pickLocalized } from "@/lib/localized";
-import type { StoreProductCardData } from "@/components/storefront/product-card";
+import type { ProductCardData } from "@/components/product-card";
 import { CategorySidebar } from "@/components/storefront/category-sidebar";
 import {
   applySmartphoneFilters,
@@ -32,7 +32,7 @@ export function StoreProductsClient({
 }: {
   categories: Category[];
   selectedCategoryId: string;
-  products: StoreProductCardData[];
+  products: ProductCardData[];
   smartphoneMode?: boolean;
 }) {
   const { lang, dir, t } = useStoreI18n();

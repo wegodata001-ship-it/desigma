@@ -32,4 +32,5 @@ function createPrismaClient(): PrismaClient {
 
 export const prismaBase = globalForPrisma.prismaBase ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prismaBase = prismaBase;
+/** One client per serverless instance — required on Vercel to avoid pool exhaustion. */
+globalForPrisma.prismaBase = prismaBase;

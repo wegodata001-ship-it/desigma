@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getStoreId } from "@/lib/store-config";
 import { safeQuery } from "@/lib/server/safe-query";
 import { StoreProductDetailClient } from "@/components/storefront/store-product-detail-client";
+import { pickProductImageUrl, sortProductImages } from "@/lib/product-images";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,7 +24,7 @@ const productInclude = {
     orderBy: { sortOrder: "asc" as const },
     include: {
       relatedProduct: {
-        include: { images: { orderBy: { sortOrder: "asc" as const }, take: 1 } },
+        include: { images: { orderBy: { sortOrder: "asc" as const }, take: 3 } },
       },
     },
   },
@@ -70,9 +71,6 @@ export default async function ProductPage({
   const { id } = await params;
   const storeId = getStoreId();
 
-  console.log("Product ID:", id);
-  console.log("Store ID:", storeId);
-
   const product = await safeQuery(
     "product.detail",
     () =>
@@ -83,8 +81,6 @@ export default async function ProductPage({
     null,
     { timeoutMs: 20_000 },
   );
-
-  console.log("Product Found:", product);
 
   if (!product) {
     return <ProductNotFound productId={id} />;
@@ -100,6 +96,9 @@ export default async function ProductPage({
         description_he: product.description_he,
         description_ar: product.description_ar,
         description_en: product.description_en,
+        specs_he: product.specs_he,
+        specs_ar: product.specs_ar,
+        specs_en: product.specs_en,
         price: Number(product.price),
         oldPrice: product.oldPrice ? Number(product.oldPrice) : null,
         discountPercent: product.discountPercent ?? null,
@@ -110,7 +109,12 @@ export default async function ProductPage({
           name_ar: product.category.name_ar,
           name_en: product.category.name_en,
         },
-        images: product.images.map((i) => ({ id: i.id, url: i.url })),
+        images: sortProductImages(product.images).map((i) => ({
+          id: i.id,
+          url: i.url,
+          isMain: i.isMain,
+          sortOrder: i.sortOrder,
+        })),
         variantGroups: product.variantGroups.map((g) => ({
           id: g.id,
           name: g.name,
@@ -133,7 +137,7 @@ export default async function ProductPage({
           name_en: rp.relatedProduct.name_en,
           price: Number(rp.relatedProduct.price),
           stock: rp.relatedProduct.stock,
-          image: rp.relatedProduct.images[0]?.url ?? null,
+          image: pickProductImageUrl(rp.relatedProduct.images),
         })),
       }}
     />

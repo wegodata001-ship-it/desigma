@@ -19,7 +19,11 @@ import {
   removeTabDrafts,
   type PolicyLang,
 } from "@/lib/policy-storage";
+import { CREATE_PRODUCT_PERF, perfEnd, perfStart } from "@/lib/admin/create-product-perf";
+import { parseProductSpecs } from "@/lib/product-specs";
 import { gallerySettingsDebug } from "@/lib/gallery-settings-debug";
+import { getPrismaQueryScope, runWithPrismaQueryScope } from "@/lib/server/prisma-query-scope";
+import { perfLog } from "@/lib/server/perf-log";
 import {
   normalizeGalleryDisplayConfig,
   normalizeGalleryPreset,
@@ -240,8 +244,12 @@ export async function deleteAllStoreCategories(
 export async function upsertProduct(formData: FormData): Promise<
   AdminActionResult<{ productId: string }>
 > {
+  const actionT0 = performance.now();
+  perfStart(CREATE_PRODUCT_PERF.total);
   try {
+    perfStart(CREATE_PRODUCT_PERF.store);
     const { storeId, userId } = await guard();
+    perfEnd(CREATE_PRODUCT_PERF.store, { storeId });
     const id = (formData.get("id") as string) || "";
     const categoryId = formData.get("categoryId") as string;
     const name_he = formData.get("name_he") as string;
@@ -266,6 +274,17 @@ export async function upsertProduct(formData: FormData): Promise<
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const parseSpecsField = (key: string): Prisma.InputJsonValue | typeof Prisma.DbNull => {
+      const raw = String(formData.get(key) ?? "").trim();
+      if (!raw) return Prisma.DbNull;
+      try {
+        const items = parseProductSpecs(JSON.parse(raw));
+        return items.length > 0 ? items : Prisma.DbNull;
+      } catch {
+        return Prisma.DbNull;
+      }
+    };
+
     const base = {
       categoryId,
       title_he: name_he,
@@ -277,6 +296,9 @@ export async function upsertProduct(formData: FormData): Promise<
       description_he: emptyToNull(formData.get("description_he")),
       description_ar: emptyToNull(formData.get("description_ar")),
       description_en: emptyToNull(formData.get("description_en")),
+      specs_he: parseSpecsField("specs_he"),
+      specs_ar: parseSpecsField("specs_ar"),
+      specs_en: parseSpecsField("specs_en"),
       price: new Prisma.Decimal(price),
       oldPrice:
         oldPriceRaw === undefined || String(oldPriceRaw).trim() === ""
@@ -369,76 +391,90 @@ export async function upsertProduct(formData: FormData): Promise<
         }))
         .filter((r) => r.id.length > 0) ?? null;
 
-    const { productId, action } = await prisma.$transaction(
-      async (tx) => {
-        let productId = id;
-        let action: "product.update" | "product.create" = "product.update";
+    perfStart(CREATE_PRODUCT_PERF.product);
+    let prismaQueryCount = 0;
+    const { productId, action } = await runWithPrismaQueryScope("admin.upsertProduct", async () => {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          let productId = id;
+          let action: "product.update" | "product.create" = "product.update";
 
-        if (id) {
-          await tx.product.updateMany({
-            where: { id, storeId },
-            data: base,
-          });
-        } else {
-          const created = await tx.product.create({ data: { ...base, storeId } });
-          productId = created.id;
-          action = "product.create";
-        }
-
-        // Backward compatible: only touch variants if payload provided.
-        if (normalizedGroups) {
-          // SAFE delete order: options -> groups.
-          await tx.productVariantOption.deleteMany({
-            where: { group: { productId } },
-          });
-          await tx.productVariantGroup.deleteMany({ where: { productId } });
-
-          for (const g of normalizedGroups) {
-            const group = await tx.productVariantGroup.create({
-              data: { productId, name: g.name, sortOrder: g.sortOrder },
+          if (id) {
+            await tx.product.updateMany({
+              where: { id, storeId },
+              data: base,
             });
-            if (g.options.length > 0) {
-              await tx.productVariantOption.createMany({
-                data: g.options.map((o) => ({
-                  groupId: group.id,
-                  value: o.value,
-                  priceAdd: new Prisma.Decimal(o.priceAdd),
-                  stock: o.stock,
-                  sku: o.sku,
-                  image: o.image,
-                  isDefault: o.isDefault,
-                  sortOrder: o.sortOrder,
-                })),
+          } else {
+            const created = await tx.product.create({ data: { ...base, storeId } });
+            productId = created.id;
+            action = "product.create";
+          }
+
+          if (normalizedGroups) {
+            perfStart(CREATE_PRODUCT_PERF.variants);
+            await tx.productVariantOption.deleteMany({
+              where: { group: { productId } },
+            });
+            await tx.productVariantGroup.deleteMany({ where: { productId } });
+
+            await Promise.all(
+              normalizedGroups.map(async (g) => {
+                const group = await tx.productVariantGroup.create({
+                  data: { productId, name: g.name, sortOrder: g.sortOrder },
+                });
+                if (g.options.length > 0) {
+                  await tx.productVariantOption.createMany({
+                    data: g.options.map((o) => ({
+                      groupId: group.id,
+                      value: o.value,
+                      priceAdd: new Prisma.Decimal(o.priceAdd),
+                      stock: o.stock,
+                      sku: o.sku,
+                      image: o.image,
+                      isDefault: o.isDefault,
+                      sortOrder: o.sortOrder,
+                    })),
+                  });
+                }
+              }),
+            );
+            perfEnd(CREATE_PRODUCT_PERF.variants, { groups: normalizedGroups.length });
+          }
+
+          if (normalizedRelated) {
+            await tx.productRelatedProduct.deleteMany({ where: { productId } });
+            const uniq = Array.from(new Set(normalizedRelated.map((r) => r.id))).filter(
+              (rid) => rid !== productId,
+            );
+            if (uniq.length > 0) {
+              const okRelated = await tx.product.findMany({
+                where: { storeId, id: { in: uniq } },
+                select: { id: true },
               });
+              const okSet = new Set(okRelated.map((p) => p.id));
+              const data = normalizedRelated
+                .filter((r) => okSet.has(r.id) && r.id !== productId)
+                .map((r) => ({ productId, relatedProductId: r.id, sortOrder: r.sortOrder }));
+              if (data.length > 0) {
+                await tx.productRelatedProduct.createMany({ data });
+              }
             }
           }
-        }
 
-        if (normalizedRelated) {
-          await tx.productRelatedProduct.deleteMany({ where: { productId } });
-          const uniq = Array.from(new Set(normalizedRelated.map((r) => r.id))).filter((rid) => rid !== productId);
-          if (uniq.length > 0) {
-            // Ensure related products exist and belong to same store.
-            const okRelated = await tx.product.findMany({
-              where: { storeId, id: { in: uniq } },
-              select: { id: true },
-            });
-            const okSet = new Set(okRelated.map((p) => p.id));
-            const data = normalizedRelated
-              .filter((r) => okSet.has(r.id) && r.id !== productId)
-              .map((r) => ({ productId, relatedProductId: r.id, sortOrder: r.sortOrder }));
-            if (data.length > 0) {
-              await tx.productRelatedProduct.createMany({ data });
-            }
-          }
-        }
+          return { productId, action };
+        },
+        { timeout: 20000 },
+      );
+      const scope = getPrismaQueryScope();
+      prismaQueryCount = scope?.count ?? 0;
+      return result;
+    });
+    perfEnd(CREATE_PRODUCT_PERF.product, {
+      prismaQueries: prismaQueryCount,
+      ms: Math.round((performance.now() - actionT0) * 100) / 100,
+    });
 
-        return { productId, action };
-      },
-      { timeout: 20000 },
-    );
-
-    // Log OUTSIDE the transaction (keeps tx short; avoids interactive timeout).
+    perfStart(CREATE_PRODUCT_PERF.audit);
     await logAdminAction({
       userId,
       action,
@@ -446,10 +482,105 @@ export async function upsertProduct(formData: FormData): Promise<
       entityId: productId,
       metadata: { sku },
     });
+    perfEnd(CREATE_PRODUCT_PERF.audit);
+
+    perfStart(CREATE_PRODUCT_PERF.revalidate);
     revalidatePath("/admin/products");
+    perfEnd(CREATE_PRODUCT_PERF.revalidate, {
+      paths: ["/admin/products"],
+      note: "does NOT revalidate /, /products, or /categories",
+    });
+
+    perfLog("admin.upsertProduct.total", performance.now() - actionT0, {
+      productId,
+      action,
+      prismaQueries: prismaQueryCount,
+    });
+    perfEnd(CREATE_PRODUCT_PERF.total, { productId, action });
     return ok({ productId });
   } catch (e) {
+    perfEnd(CREATE_PRODUCT_PERF.total, { error: true });
     return err(e instanceof Error ? e.message : "שמירה נכשלה");
+  }
+}
+
+export async function addProductImagesBatch(input: {
+  productId: string;
+  images: Array<{ url: string; sortOrder: number; isMain: boolean }>;
+}): Promise<AdminActionResult<{ count: number }>> {
+  if (input.images.length === 0) return ok({ count: 0 });
+  const batchT0 = performance.now();
+  try {
+    perfStart(CREATE_PRODUCT_PERF.store);
+    const { storeId, userId } = await guard();
+    perfEnd(CREATE_PRODUCT_PERF.store);
+
+    const productId = input.productId;
+    await prisma.product.findFirstOrThrow({ where: { id: productId, storeId } });
+
+    perfStart(CREATE_PRODUCT_PERF.images);
+    const paths = input.images.map((i) => assertAssetPath(i.url));
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.productImage.findMany({
+        where: { productId, storeId },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, sortOrder: true, isMain: true },
+      });
+      let order = existing.length;
+      const hasMain = existing.some((i) => i.isMain);
+
+      await Promise.all(
+        paths.map((url, idx) => {
+          const meta = input.images[idx]!;
+          const setMain = meta.isMain || (!hasMain && idx === 0);
+          return tx.productImage.create({
+            data: {
+              storeId,
+              productId,
+              url,
+              sortOrder: meta.sortOrder ?? order++,
+              isMain: setMain,
+            },
+          });
+        }),
+      );
+
+      const all = await tx.productImage.findMany({
+        where: { productId, storeId },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true },
+      });
+      await Promise.all(
+        all.map((img, idx) =>
+          tx.productImage.updateMany({
+            where: { id: img.id, productId, storeId },
+            data: { sortOrder: idx, isMain: idx === 0 },
+          }),
+        ),
+      );
+    });
+    perfEnd(CREATE_PRODUCT_PERF.images, { count: input.images.length, ms: Math.round(performance.now() - batchT0) });
+
+    await logAdminAction({
+      userId,
+      action: "product.image.batch",
+      entity: "Product",
+      entityId: productId,
+      metadata: { count: input.images.length },
+    });
+
+    perfStart(CREATE_PRODUCT_PERF.revalidate);
+    revalidatePath("/admin/products");
+    revalidatePath(`/products/${productId}`);
+    perfEnd(CREATE_PRODUCT_PERF.revalidate, {
+      paths: ["/admin/products", `/products/${productId}`],
+      note: "single revalidate after batch — not per image",
+    });
+
+    return ok({ count: input.images.length });
+  } catch (e) {
+    console.error("[addProductImagesBatch] failed", e);
+    return err(e instanceof Error ? e.message : "הוספת תמונות נכשלה");
   }
 }
 

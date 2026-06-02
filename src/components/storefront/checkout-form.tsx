@@ -2,12 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/components/cart-context";
 import { CART_REMOVAL_TOAST_HE } from "@/lib/cart/availability";
 import { EmailConfirmFields } from "@/components/storefront/email-confirm-fields";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import {
+  checkoutPerfEnd,
+  checkoutPerfFetch,
+  checkoutPerfStart,
+  isCheckoutPerfEnabled,
+} from "@/lib/checkout/checkout-perf";
 import { validateEmailConfirmPair } from "@/lib/email-confirm-validation";
+import type { CheckoutBootstrapData } from "@/lib/checkout/checkout-bootstrap-types";
 import {
   deliveryDisplayName,
   deliveryEtaLabel,
@@ -24,14 +31,50 @@ const EMPTY_ADDRESS = {
   postalCode: "",
 };
 
-export function CheckoutForm() {
+function applyBootstrapToForm(
+  bootstrap: CheckoutBootstrapData,
+  setters: {
+    setDeliveryOptions: (v: DeliveryOptionDto[]) => void;
+    setDeliveryId: (v: string) => void;
+    setOptionsLoading: (v: boolean) => void;
+    setCustomerName: (v: string) => void;
+    setCustomerEmail: (v: string) => void;
+    setConfirmCustomerEmail: (v: string) => void;
+    setPointsBalance: (v: number | null) => void;
+    setVerifyHint: (v: string | null) => void;
+  },
+) {
+  setters.setDeliveryOptions(bootstrap.deliveryOptions);
+  if (bootstrap.deliveryOptions[0]) setters.setDeliveryId(bootstrap.deliveryOptions[0].id);
+  setters.setOptionsLoading(false);
+  if (bootstrap.customer) {
+    const email = bootstrap.customer.email;
+    setters.setCustomerName(bootstrap.customer.name);
+    setters.setCustomerEmail(email);
+    setters.setConfirmCustomerEmail(email);
+    setters.setPointsBalance(bootstrap.customer.pointsBalance);
+    if (
+      bootstrap.requireEmailVerificationForCheckout &&
+      bootstrap.customer.emailVerified === false
+    ) {
+      setters.setVerifyHint(
+        "יש לאמת את כתובת האימייל לפני השלמת הזמנה. בדקו את תיבת הדואר או התחברו מחדש לאחר לחיצה על קישור האימות.",
+      );
+    }
+  }
+}
+
+export function CheckoutForm({ bootstrap }: { bootstrap?: CheckoutBootstrapData }) {
   const router = useRouter();
-  const { items, cartCount, clear, validateForCheckout, syncing } = useCart();
+  const { items, cartCount, clear, validateForCheckout, syncedOnce, products } = useCart();
   const { t, dir, lang } = useStoreI18n();
   const locale = lang === "ar" ? "ar" : lang === "en" ? "en" : "he";
+  const bootstrapApplied = useRef(false);
 
-  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionDto[]>([]);
-  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionDto[]>(
+    () => bootstrap?.deliveryOptions ?? [],
+  );
+  const [optionsLoading, setOptionsLoading] = useState(() => !bootstrap);
   const [deliveryId, setDeliveryId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -81,47 +124,79 @@ export function CheckoutForm() {
     [t],
   );
 
-  useEffect(() => {
-    setOptionsLoading(true);
-    fetch("/api/delivery-options")
-      .then((r) => r.json())
-      .then((d: { options: DeliveryOptionDto[] }) => {
-        setDeliveryOptions(d.options ?? []);
-        if (d.options?.[0]) setDeliveryId(d.options[0].id);
-      })
-      .finally(() => setOptionsLoading(false));
+  const applyBootstrap = useCallback(
+    (data: CheckoutBootstrapData) => {
+      applyBootstrapToForm(data, {
+        setDeliveryOptions,
+        setDeliveryId,
+        setOptionsLoading,
+        setCustomerName,
+        setCustomerEmail,
+        setConfirmCustomerEmail,
+        setPointsBalance,
+        setVerifyHint,
+      });
+    },
+    [],
+  );
 
-    Promise.all([
-      fetch("/api/auth/me").then((r) => r.json()),
-      fetch("/api/store/public").then((r) => r.json()),
-    ]).then(
-      ([
-        me,
-        pub,
-      ]: [
-        { user: { name?: string; email?: string; pointsBalance?: number | null; emailVerified?: boolean } | null },
-        { requireEmailVerificationForCheckout?: boolean },
-      ]) => {
-        if (me.user) {
-          const accountEmail = me.user.email ?? "";
-          setCustomerName(me.user.name ?? "");
-          setCustomerEmail(accountEmail);
-          setConfirmCustomerEmail(accountEmail);
-          setPointsBalance(me.user.pointsBalance ?? null);
-          const needVerify = pub.requireEmailVerificationForCheckout !== false;
-          if (needVerify && me.user.emailVerified === false) {
-            setVerifyHint(
-              "יש לאמת את כתובת האימייל לפני השלמת הזמנה. בדקו את תיבת הדואר או התחברו מחדש לאחר לחיצה על קישור האימות.",
-            );
-          }
+  useEffect(() => {
+    checkoutPerfStart("checkout-page");
+    let apiCalls = 0;
+
+    if (bootstrap && !bootstrapApplied.current) {
+      bootstrapApplied.current = true;
+      applyBootstrap(bootstrap);
+      checkoutPerfEnd("checkout-page", {
+        source: "server-props",
+        apiCalls: 0,
+        prismaNote: "see [perf] checkout.bootstrap.total in server logs",
+      });
+      return;
+    }
+
+    if (bootstrapApplied.current) return;
+
+    void (async () => {
+      try {
+        const data = await checkoutPerfFetch<CheckoutBootstrapData & { debug?: unknown }>(
+          "load-shipping",
+          "/api/checkout/bootstrap",
+        );
+        apiCalls += 1;
+        if (isCheckoutPerfEnabled()) {
+          console.log("[checkout-perf] load-store + load-payment-settings", {
+            merged: true,
+            endpoint: "/api/checkout/bootstrap",
+          });
         }
-      },
-    );
-  }, []);
+        applyBootstrap(data);
+        if (isCheckoutPerfEnabled() && data.debug) {
+          console.log("[checkout-perf] server-debug", data.debug);
+        }
+      } catch (e) {
+        console.error("[checkout] bootstrap failed", e);
+        setOptionsLoading(false);
+      } finally {
+        checkoutPerfEnd("checkout-page", { source: "client-api", apiCalls });
+      }
+    })();
+  }, [applyBootstrap, bootstrap]);
 
   useEffect(() => {
-    if (items.length > 0) void validateForCheckout();
-  }, [items.length, validateForCheckout]);
+    if (items.length === 0) return;
+    const hasCachedProducts = items.every((line) => Boolean(products[line.productId]));
+    if (syncedOnce && hasCachedProducts) {
+      if (isCheckoutPerfEnabled()) {
+        console.log("[checkout-perf] load-cart skipped", { syncedOnce, hasCachedProducts });
+      }
+      return;
+    }
+    checkoutPerfStart("load-cart");
+    void validateForCheckout().finally(() => {
+      checkoutPerfEnd("load-cart", { triggered: "cart/sync" });
+    });
+  }, [items, syncedOnce, products, validateForCheckout]);
 
   function updateAddress(field: keyof typeof EMPTY_ADDRESS, value: string) {
     setAddressFields((prev) => ({ ...prev, [field]: value }));
@@ -227,7 +302,7 @@ export function CheckoutForm() {
     }
   }
 
-  if (!syncing && cartCount === 0) {
+  if (syncedOnce && items.length === 0) {
     return (
       <div dir={dir} className="mx-auto max-w-lg px-4 py-12 text-center">
         <p className="text-zinc-500">{t("emptyCart")}</p>
@@ -429,8 +504,7 @@ export function CheckoutForm() {
           type="submit"
           disabled={
             loading ||
-            syncing ||
-            cartCount === 0 ||
+            items.length === 0 ||
             optionsLoading ||
             deliveryOptions.length === 0 ||
             !emailValidation.isValid

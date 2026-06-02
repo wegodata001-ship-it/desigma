@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useCart } from "@/components/cart-context";
+import { useCart, type CartProductRow } from "@/components/cart-context";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 
 export function AddToCartButton({
@@ -9,11 +9,14 @@ export function AddToCartButton({
   optionIds,
   disabled,
   qty = 1,
+  productSnapshot,
 }: {
   productId: string;
   optionIds?: string[];
   disabled?: boolean;
   qty?: number;
+  /** Product data already on screen — skip waiting for cart sync */
+  productSnapshot?: CartProductRow;
 }) {
   const { addItem } = useCart();
   const { t } = useStoreI18n();
@@ -21,7 +24,7 @@ export function AddToCartButton({
 
   const click = () => {
     if (disabled) return;
-    addItem(productId, qty, optionIds ?? []);
+    addItem(productId, qty, optionIds ?? [], productSnapshot, "add-to-cart-button");
     setShowToast(true);
     window.setTimeout(() => setShowToast(false), 1400);
   };

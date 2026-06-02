@@ -8,6 +8,7 @@ import {
   colorOptionsFromGroups,
   minSmartphonePrice,
 } from "@/lib/smartphone-catalog";
+import { pickProductImageUrl } from "@/lib/product-images";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -63,7 +64,7 @@ export default async function ProductsPage({
         },
         orderBy: { createdAt: "desc" },
         include: {
-          images: { orderBy: { sortOrder: "asc" }, take: 1 },
+          images: { orderBy: [{ isMain: "desc" }, { sortOrder: "asc" }], take: 3 },
           category: { select: { name_he: true, name_en: true, parentId: true } },
           variantGroups: {
             orderBy: { sortOrder: "asc" },
@@ -103,7 +104,7 @@ export default async function ProductsPage({
           oldPrice: p.oldPrice ? Number(p.oldPrice) : null,
           discountPercent: p.discountPercent ?? null,
           stock: p.stock,
-          image: p.images[0]?.url ?? null,
+          image: pickProductImageUrl(p.images),
           tags: p.tags ?? [],
           featured: p.featured,
           brand: detectBrand(p.name_en, catPath),
