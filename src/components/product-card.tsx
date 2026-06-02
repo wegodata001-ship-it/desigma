@@ -6,9 +6,9 @@ import { CatalogProductImage } from "@/components/storefront/catalog-product-ima
 import { QuickAddToCartButton } from "@/components/storefront/quick-add-to-cart-button";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
 import {
-  PRODUCT_CARD_BODY_CLASS,
+  PRODUCT_CARD_CONTENT_CLASS,
   PRODUCT_CARD_IMAGE_WRAPPER_CLASS,
-  PRODUCT_CARD_WIDTH_CLASS,
+  PRODUCT_CARD_SHELL_CLASS,
 } from "@/lib/product-card-layout";
 import { pickLocalized } from "@/lib/localized";
 
@@ -53,8 +53,10 @@ function swatchColor(name: string): string {
   return COLOR_SWATCH[name.toLowerCase()] ?? "#64748b";
 }
 
-const DEBUG_PRODUCT_IMAGES =
-  process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEBUG_PRODUCT_IMAGES === "1";
+const DEBUG_PRODUCT_CARD =
+  process.env.NODE_ENV === "development" &&
+  (process.env.NEXT_PUBLIC_DEBUG_PRODUCT_IMAGES === "1" ||
+    process.env.NEXT_PUBLIC_DEBUG_PRODUCT_CARD === "1");
 
 export function ProductCard({ product }: { product: ProductCardData }) {
   const { lang, t } = useStoreI18n();
@@ -66,24 +68,29 @@ export function ProductCard({ product }: { product: ProductCardData }) {
   ].slice(0, 3);
 
   useEffect(() => {
-    if (!DEBUG_PRODUCT_IMAGES) return;
-    console.log("[ProductCard]", {
+    if (!DEBUG_PRODUCT_CARD) return;
+    console.log("PRODUCT", product);
+    console.log("[ProductCard] derived", {
       id: product.id,
+      name: title,
+      price: product.price,
+      fromPrice: product.fromPrice,
+      stock: product.stock,
       image: product.image,
-      title,
+      colors: product.colorOptions,
+      variants: product.variantGroups,
     });
-  }, [product.id, product.image, title]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debug-only; stable primitive deps
+  }, [product.id, product.image, product.price, product.stock, title]);
 
   return (
-    <article
-      className={`group/card mx-auto flex h-full flex-col rounded-2xl border border-zinc-800 bg-[#111827] p-2.5 shadow-[0_12px_30px_-18px_rgba(0,0,0,0.7)] transition hover:border-orange-500/40 active:scale-[0.99] md:p-3 ${PRODUCT_CARD_WIDTH_CLASS}`}
-    >
+    <article className={PRODUCT_CARD_SHELL_CLASS}>
       <Link href={`/products/${product.id}`} className={PRODUCT_CARD_IMAGE_WRAPPER_CLASS}>
         <CatalogProductImage
           path={product.image}
           alt={title}
           variant="card"
-          frameClassName="absolute inset-0 h-full w-full"
+          frameClassName="h-full w-full"
         />
         <div className="pointer-events-none absolute start-2 top-2 z-10 flex flex-col gap-1">
           {product.discountPercent ? (
@@ -102,14 +109,15 @@ export function ProductCard({ product }: { product: ProductCardData }) {
         </div>
       </Link>
 
-      <div className={PRODUCT_CARD_BODY_CLASS}>
+      <div className={PRODUCT_CARD_CONTENT_CLASS}>
         <Link
           href={`/products/${product.id}`}
-          className="line-clamp-2 min-h-10 text-[13px] font-semibold leading-snug text-zinc-100 hover:text-orange-300 md:text-sm"
+          className="product-card-title line-clamp-2 text-[13px] font-semibold leading-snug text-zinc-100 hover:text-orange-300 md:text-sm"
         >
           {title}
         </Link>
-        <div className="flex flex-wrap items-baseline gap-2">
+
+        <div className="product-card-price flex flex-wrap items-baseline gap-2">
           <span className="text-base font-bold text-orange-400 md:text-lg">
             {product.fromPrice != null && product.fromPrice !== product.price ? (
               <>
@@ -123,8 +131,9 @@ export function ProductCard({ product }: { product: ProductCardData }) {
             <span className="text-sm text-zinc-500 line-through">₪{product.oldPrice.toFixed(2)}</span>
           ) : null}
         </div>
+
         {(product.colorOptions?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="product-card-colors flex flex-wrap gap-1.5">
             {product.colorOptions!.slice(0, 5).map((c) => (
               <span
                 key={c}
@@ -135,10 +144,23 @@ export function ProductCard({ product }: { product: ProductCardData }) {
             ))}
           </div>
         )}
-        <p className={`text-[11px] ${product.stock > 0 ? "text-emerald-400/90" : "text-red-400/90"}`}>
+
+        {(product.variantGroups?.length ?? 0) > 0 && (
+          <p className="product-card-variants line-clamp-1 text-[11px] text-zinc-500">
+            {product.variantGroups!
+              .map((g) => g.name)
+              .slice(0, 2)
+              .join(" · ")}
+          </p>
+        )}
+
+        <p
+          className={`product-card-stock text-[11px] ${product.stock > 0 ? "text-emerald-400/90" : "text-red-400/90"}`}
+        >
           {product.stock > 0 ? t("inStock") : t("outOfStock")}
         </p>
-        <div className="mt-auto pt-1">
+
+        <div className="product-card-footer mt-auto pt-1">
           <QuickAddToCartButton
             disabled={product.stock <= 0}
             product={{

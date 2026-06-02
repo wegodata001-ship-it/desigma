@@ -19,11 +19,25 @@ export function assertBannerImagePath(pathOrUrl: string): string {
   return assertAssetPath(trimmed);
 }
 
+/** Legacy store folder before NEXT_PUBLIC_ASSETS_FOLDER=desigma. */
+function normalizeStorageKey(path: string): string {
+  const trimmed = path.trim().replace(/^\/+/, "");
+  if (trimmed.startsWith("base/")) return `desigma/${trimmed.slice(5)}`;
+  return trimmed;
+}
+
 /** Use for any image that may be Supabase-relative, public static (/…), or absolute URL. */
 export function resolvePublicAssetSrc(path: string): string {
-  const p = path.trim();
-  if (p.startsWith("http://") || p.startsWith("https://")) return p;
+  let p = path.trim();
+  if (p.startsWith("http://") || p.startsWith("https://")) {
+    // Fix old Supabase URLs that still point at /base/… in the bucket.
+    if (p.includes("/store-assets/base/")) {
+      p = p.replace("/store-assets/base/", "/store-assets/desigma/");
+    }
+    return p;
+  }
   if (p.startsWith("/")) return p;
+  p = normalizeStorageKey(p);
   // Bundled static assets in public/ (not Supabase storage)
   if (p.startsWith("demo/") || p.startsWith("products/") || p.startsWith("hero/") || p.startsWith("images/")) {
     return `/${p}`;
@@ -33,7 +47,8 @@ export function resolvePublicAssetSrc(path: string): string {
 
 export function publicStorageUrl(relativePath: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base) return `/api/asset-placeholder?path=${encodeURIComponent(relativePath)}`;
+  const key = normalizeStorageKey(relativePath);
+  if (!base) return `/api/asset-placeholder?path=${encodeURIComponent(key)}`;
   const trimmed = base.replace(/\/+$/, "");
-  return `${trimmed}/storage/v1/object/public/${STORAGE_BUCKET}/${relativePath}`;
+  return `${trimmed}/storage/v1/object/public/${STORAGE_BUCKET}/${key}`;
 }

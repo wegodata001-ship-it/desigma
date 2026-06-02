@@ -326,6 +326,8 @@ model Product {
   @@unique([storeId, sku])
   @@index([storeId])
   @@index([categoryId])
+  @@index([storeId, active, stock])
+  @@index([storeId, updatedAt(sort: Desc)])
 }
 
 model ProductRelatedProduct {
@@ -421,6 +423,7 @@ model ProductImage {
 
   @@index([storeId])
   @@index([productId])
+  @@index([productId, sortOrder])
 }
 
 model Banner {
@@ -524,6 +527,10 @@ model Order {
   @@unique([storeId, orderNumber])
   @@index([storeId])
   @@index([customerId])
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([storeId, status])
+  @@index([storeId, paymentStatus])
+  @@index([storeId, paymentStatus, createdAt(sort: Desc)])
 }
 
 model AdminActionLog {

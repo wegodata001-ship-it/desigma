@@ -149,8 +149,9 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "Store admin login",
-    adminWelcomeTitle: "Welcome to your management hub",
-    adminWelcomeSubtitle: "Run your store from anywhere, anytime",
+    adminPortalTagline: "Store Management Portal",
+    adminWelcomeTitle: "Sign in to your store dashboard",
+    adminWelcomeSubtitle: "Manage products, orders, and customers from one place.",
     adminLoginFormTitle: "Sign in",
     adminLoginSubmit: "Enter dashboard",
     adminLoggingIn: "Signing in…",
@@ -575,8 +576,9 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "כניסת מנהל חנות",
-    adminWelcomeTitle: "ברוכים הבאים למערכת הניהול",
-    adminWelcomeSubtitle: "נהל את החנות שלך מכל מקום ובכל זמן",
+    adminPortalTagline: "Store Management Portal",
+    adminWelcomeTitle: "כניסה למערכת ניהול החנות",
+    adminWelcomeSubtitle: "נהל מוצרים, הזמנות ולקוחות ממקום אחד.",
     adminLoginFormTitle: "התחברות",
     adminLoginSubmit: "כניסה למערכת",
     adminLoggingIn: "מתחבר…",
@@ -999,8 +1001,9 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "دخول مدير المتجر",
-    adminWelcomeTitle: "مرحبًا بك في لوحة الإدارة",
-    adminWelcomeSubtitle: "أدِر متجرك من أي مكان وفي أي وقت",
+    adminPortalTagline: "Store Management Portal",
+    adminWelcomeTitle: "الدخول إلى نظام إدارة المتجر",
+    adminWelcomeSubtitle: "أدر المنتجات والطلبات والعملاء من مكان واحد.",
     adminLoginFormTitle: "تسجيل الدخول",
     adminLoginSubmit: "الدخول إلى النظام",
     adminLoggingIn: "جارٍ الاتصال…",

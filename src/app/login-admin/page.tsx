@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AdminLoginIllustration } from "@/components/admin/admin-login-illustration";
 import { AdminI18nProvider, useAdminI18n } from "@/lib/admin-i18n";
 
 export default function LoginAdminPage() {
@@ -15,12 +14,7 @@ export default function LoginAdminPage() {
 
 function LoginSpinner() {
   return (
-    <svg
-      className="h-5 w-5 animate-spin text-white"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-    >
+    <svg className="h-5 w-5 animate-spin text-white" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
       <path
         className="opacity-90"
@@ -31,55 +25,74 @@ function LoginSpinner() {
   );
 }
 
-function LangSwitch() {
-  const { lang, setLang, t } = useAdminI18n();
-  const btn = (code: "he" | "en" | "ar", label: string) => (
-    <button
-      key={code}
-      type="button"
-      onClick={() => setLang(code)}
-      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-        lang === code ? "bg-white/15 text-white" : "text-white/50 hover:bg-white/10 hover:text-white/80"
-      }`}
-    >
-      {label}
-    </button>
-  );
+function IconMail({ className }: { className?: string }) {
   return (
-    <div className="inline-flex gap-0.5 rounded-xl border border-white/[0.08] bg-black/20 p-1 backdrop-blur-sm">
-      {btn("he", t("hebrew"))}
-      {btn("en", t("english"))}
-      {btn("ar", t("arabic"))}
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
+function IconLock({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+      />
+    </svg>
+  );
+}
+
+function IconEye({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+      />
+    </svg>
+  );
+}
+
+function LangSwitch() {
+  const { lang, setLang } = useAdminI18n();
+  const pills: { code: "he" | "en" | "ar"; label: string }[] = [
+    { code: "he", label: "HE" },
+    { code: "en", label: "EN" },
+    { code: "ar", label: "AR" },
+  ];
+  return (
+    <div className="inline-flex gap-1 rounded-full border border-white/[0.08] bg-black/30 p-1 backdrop-blur-sm">
+      {pills.map(({ code, label }) => (
+        <button
+          key={code}
+          type="button"
+          onClick={() => setLang(code)}
+          className={`min-w-[36px] rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide transition ${
+            lang === code
+              ? "bg-[#ff7a00] text-white shadow-[0_0_16px_rgba(255,122,0,0.35)]"
+              : "text-white/55 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
 
-function BrandPanel({ compact }: { compact?: boolean }) {
-  const { t } = useAdminI18n();
-  return (
-    <div
-      className={`flex flex-col ${compact ? "items-center px-6 pt-10 text-center lg:items-start lg:px-12 lg:pt-0 lg:text-start" : "justify-center px-8 py-12 lg:px-14 lg:py-16"}`}
-    >
-      <div className="mb-8 lg:mb-10">
-        <div className="text-3xl font-black tracking-[0.2em] text-white md:text-4xl">
-          DESIGMA
-        </div>
-        <div className="mt-2 h-1 w-12 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#FF8F1F] lg:mx-0 mx-auto" />
-      </div>
-      <h1 className="max-w-md text-2xl font-bold leading-tight text-white md:text-3xl lg:text-4xl">
-        {t("adminWelcomeTitle")}
-      </h1>
-      <p className="mt-3 max-w-sm text-base leading-relaxed text-white/60 md:text-lg">
-        {t("adminWelcomeSubtitle")}
-      </p>
-      {!compact && (
-        <div className="mt-12 hidden w-full lg:block">
-          <AdminLoginIllustration />
-        </div>
-      )}
-    </div>
-  );
-}
+const INPUT_WRAP =
+  "flex h-12 items-center gap-2.5 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3.5 transition duration-200 focus-within:border-[#ff7a00]/55 focus-within:shadow-[0_0_0_2px_rgba(255,122,0,0.18)]";
+const INPUT_CLASS =
+  "min-h-0 flex-1 border-0 bg-transparent text-[15px] text-white placeholder:text-white/35 outline-none ring-0";
 
 function LoginAdminInner() {
   const [email, setEmail] = useState("");
@@ -122,160 +135,151 @@ function LoginAdminInner() {
     }
   }
 
-  const inputWrap =
-    "flex items-center gap-3 rounded-xl border border-white/[0.1] bg-white/[0.05] px-4 transition focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/20";
-  const inputClass =
-    "min-h-[52px] flex-1 border-0 bg-transparent py-3 text-[15px] text-white placeholder:text-white/35 outline-none ring-0";
-
   return (
     <div
       dir={isRtl ? "rtl" : "ltr"}
-      className="relative min-h-screen overflow-hidden bg-[#050505] text-white"
+      className="relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-8 sm:px-4"
+      style={{
+        background: `
+          radial-gradient(circle at top right, rgba(255,120,0,0.25), transparent 30%),
+          radial-gradient(circle at bottom left, rgba(0,80,255,0.25), transparent 40%),
+          #05070d
+        `,
+      }}
     >
-      {/* Gradient + glow */}
-      <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#050505] via-[#0B1020] to-[#111827]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -top-32 start-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#FF7A00]/20 blur-[120px] md:start-auto md:end-0 md:translate-x-1/3"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute bottom-0 start-0 h-[300px] w-[300px] rounded-full bg-blue-600/10 blur-[100px]"
-        aria-hidden
-      />
-
-      {/* Layout LTR: form left, brand right — text direction set per panel */}
-      <div className="relative z-10 flex min-h-screen flex-col lg:grid lg:grid-cols-2" dir="ltr">
-        <div className="lg:col-start-2 lg:row-start-1">
-          <div dir={isRtl ? "rtl" : "ltr"}>
-            <BrandPanel compact />
-          </div>
+      <main
+        className="admin-login-card admin-login-enter relative z-10 w-full max-w-[92vw] sm:max-w-[440px]"
+        style={{
+          background: "rgba(15,15,20,0.75)",
+          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)",
+          borderRadius: "20px",
+          padding: "clamp(22px, 5vw, 32px)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.4)",
+        }}
+      >
+        <div className="mb-5 flex items-center justify-end">
+          <LangSwitch />
         </div>
 
-        <div
-          dir={isRtl ? "rtl" : "ltr"}
-          className="flex flex-1 flex-col justify-center px-5 pb-10 pt-4 sm:px-8 lg:col-start-1 lg:row-start-1 lg:px-12 lg:py-12"
-        >
-          <div className="mb-6 flex justify-end lg:absolute lg:end-8 lg:top-8">
-            <LangSwitch />
+        <header className="mb-6 text-center">
+          <div
+            className="text-white"
+            style={{
+              fontSize: "clamp(28px, 6vw, 36px)",
+              fontWeight: 900,
+              letterSpacing: "5px",
+              lineHeight: 1.1,
+            }}
+          >
+            DESIGMA
           </div>
+          <p className="mt-1.5 text-[10px] font-medium tracking-[0.2em] text-white/45 uppercase">
+            {t("adminPortalTagline")}
+          </p>
+          <h1 className="mt-5 text-lg font-bold text-white">{t("adminWelcomeTitle")}</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+            {t("adminWelcomeSubtitle")}
+          </p>
+        </header>
 
-          <div className="mx-auto w-full max-w-[420px]">
-            <div
-              className="rounded-2xl border border-white/[0.08] p-6 shadow-2xl shadow-black/50 sm:p-8"
-              style={{
-                background: "rgba(20,20,20,0.7)",
-                backdropFilter: "blur(20px)",
-                WebkitBackdropFilter: "blur(20px)",
-              }}
-            >
-              <h2 className="mb-6 text-center text-lg font-semibold text-white/90 lg:text-start">
-                {t("adminLoginFormTitle")}
-              </h2>
-
-              <form onSubmit={submit} className="space-y-5">
-                <div>
-                  <label htmlFor="admin-email" className="mb-2 block text-sm font-medium text-white/70">
-                    {t("email")}
-                  </label>
-                  <div className={inputWrap}>
-                    <span className="text-lg opacity-70" aria-hidden>
-                      📧
-                    </span>
-                    <input
-                      id="admin-email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      className={inputClass}
-                      placeholder={t("emailPlaceholder")}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="admin-password" className="mb-2 block text-sm font-medium text-white/70">
-                    {t("password")}
-                  </label>
-                  <div className={inputWrap}>
-                    <span className="text-lg opacity-70" aria-hidden>
-                      🔒
-                    </span>
-                    <input
-                      id="admin-password"
-                      type={showPassword ? "text" : "password"}
-                      required
-                      autoComplete="current-password"
-                      className={inputClass}
-                      placeholder={t("passwordPlaceholder")}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={loading}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg transition hover:bg-white/10 hover:text-white ${
-                        showPassword ? "text-orange-400" : "text-white/50"
-                      }`}
-                      aria-label={showPassword ? t("hidePassword") : t("showPassword")}
-                      aria-pressed={showPassword}
-                    >
-                      👁
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <a
-                    href="mailto:support@desigma-shop.com"
-                    className="text-sm font-medium text-orange-400/90 transition hover:text-[#FF8F1F]"
-                  >
-                    {t("forgotPassword")}
-                  </a>
-                </div>
-
-                {error && (
-                  <p
-                    role="alert"
-                    className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200"
-                  >
-                    {error}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex h-14 w-full items-center justify-center gap-2 rounded-[14px] bg-[#FF7A00] text-base font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:bg-[#FF8F1F] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {loading ? (
-                    <>
-                      <LoginSpinner />
-                      <span>{t("adminLoggingIn")}</span>
-                    </>
-                  ) : (
-                    t("adminLoginSubmit")
-                  )}
-                </button>
-              </form>
+        <form onSubmit={submit} className="space-y-3.5">
+          <div>
+            <label htmlFor="admin-email" className="mb-1.5 block text-xs font-medium text-white/60">
+              {t("email")}
+            </label>
+            <div className={INPUT_WRAP}>
+              <IconMail className="h-5 w-5 shrink-0 text-[#ff7a00]/90" />
+              <input
+                id="admin-email"
+                type="email"
+                required
+                autoComplete="email"
+                className={INPUT_CLASS}
+                placeholder={t("emailPlaceholder")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
             </div>
-
-            <Link
-              href="/"
-              className="mt-8 flex items-center justify-center gap-2 text-sm font-medium text-white/50 transition hover:text-white/80"
-            >
-              <span aria-hidden>←</span>
-              <span>{t("backToSite")}</span>
-            </Link>
           </div>
-        </div>
-      </div>
+
+          <div>
+            <label htmlFor="admin-password" className="mb-1.5 block text-xs font-medium text-white/60">
+              {t("password")}
+            </label>
+            <div className={INPUT_WRAP}>
+              <IconLock className="h-5 w-5 shrink-0 text-[#ff7a00]/90" />
+              <input
+                id="admin-password"
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                className={INPUT_CLASS}
+                placeholder={t("passwordPlaceholder")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/10 ${
+                  showPassword ? "text-[#ff7a00]" : "text-white/45"
+                }`}
+                aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                aria-pressed={showPassword}
+              >
+                <IconEye className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <a
+              href="mailto:support@desigma-shop.com"
+              className="text-xs font-medium text-white/45 transition hover:text-[#ff7a00]"
+            >
+              {t("forgotPassword")}
+            </a>
+          </div>
+
+          {error && (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+            >
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7a00] text-base font-bold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+            style={{ boxShadow: "0 0 18px rgba(255,122,0,0.3)" }}
+          >
+            {loading ? (
+              <>
+                <LoginSpinner />
+                <span>{t("adminLoggingIn")}</span>
+              </>
+            ) : (
+              t("adminLoginSubmit")
+            )}
+          </button>
+        </form>
+
+        <Link
+          href="/"
+          className="mt-6 flex items-center justify-center gap-2 text-xs font-medium text-white/40 transition hover:text-white/70"
+        >
+          <span aria-hidden>←</span>
+          <span>{t("backToSite")}</span>
+        </Link>
+      </main>
+
     </div>
   );
 }

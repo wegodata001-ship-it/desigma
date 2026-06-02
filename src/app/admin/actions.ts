@@ -7,7 +7,14 @@ import { STORE_ID } from "@/lib/store";
 import { getRequestStoreId } from "@/lib/store-request";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { assertAssetPath, assertBannerImagePath } from "@/lib/assets-path";
-import { logAdminAction } from "@/lib/admin-audit";
+import { logAdminAction, voidLogAdminAction } from "@/lib/admin-audit";
+
+/** Storefront only — admin UI uses React Query cache, not RSC refresh. */
+function revalidateStorefrontProduct(productId: string) {
+  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath(`/products/${productId}`);
+}
 import { err, ok, type AdminActionResult } from "@/lib/admin-action-result";
 import type { PolicyTab } from "@/lib/legal-defaults";
 import { LEGAL_ADMIN_DEFAULTS } from "@/lib/legal-defaults";
@@ -147,14 +154,14 @@ export async function deleteProduct(formData: FormData): Promise<AdminActionResu
     const { storeId, userId } = await guard();
     const id = formData.get("id") as string;
     await prisma.product.deleteMany({ where: { id, storeId } });
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.delete",
       entity: "Product",
       entityId: id,
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${id}`);
+    revalidatePath("/");
+    revalidatePath("/products");
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "מחיקה נכשלה");
@@ -474,22 +481,15 @@ export async function upsertProduct(formData: FormData): Promise<
       ms: Math.round((performance.now() - actionT0) * 100) / 100,
     });
 
-    perfStart(CREATE_PRODUCT_PERF.audit);
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action,
       entity: "Product",
       entityId: productId,
       metadata: { sku },
     });
-    perfEnd(CREATE_PRODUCT_PERF.audit);
 
-    perfStart(CREATE_PRODUCT_PERF.revalidate);
-    revalidatePath("/admin/products");
-    perfEnd(CREATE_PRODUCT_PERF.revalidate, {
-      paths: ["/admin/products"],
-      note: "does NOT revalidate /, /products, or /categories",
-    });
+    revalidateStorefrontProduct(productId);
 
     perfLog("admin.upsertProduct.total", performance.now() - actionT0, {
       productId,
@@ -561,7 +561,7 @@ export async function addProductImagesBatch(input: {
     });
     perfEnd(CREATE_PRODUCT_PERF.images, { count: input.images.length, ms: Math.round(performance.now() - batchT0) });
 
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.batch",
       entity: "Product",
@@ -569,13 +569,7 @@ export async function addProductImagesBatch(input: {
       metadata: { count: input.images.length },
     });
 
-    perfStart(CREATE_PRODUCT_PERF.revalidate);
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${productId}`);
-    perfEnd(CREATE_PRODUCT_PERF.revalidate, {
-      paths: ["/admin/products", `/products/${productId}`],
-      note: "single revalidate after batch — not per image",
-    });
+    revalidateStorefrontProduct(productId);
 
     return ok({ count: input.images.length });
   } catch (e) {
@@ -627,15 +621,14 @@ export async function addProductImage(formData: FormData): Promise<
         select: { id: true, url: true, isMain: true, sortOrder: true },
       });
     });
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.create",
       entity: "Product",
       entityId: productId,
       metadata: { path: url },
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${productId}`);
+    revalidateStorefrontProduct(productId);
     return ok(saved);
   } catch (e) {
     console.error("[addProductImage] failed", e);
@@ -666,14 +659,13 @@ export async function deleteProductImage(formData: FormData): Promise<AdminActio
       );
     }
 
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.delete",
       entity: "ProductImage",
       entityId: imageId,
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${img.productId}`);
+    revalidateStorefrontProduct(img.productId);
     return ok();
   } catch (e) {
     console.error("[deleteProductImage] failed", e);
@@ -711,14 +703,13 @@ export async function setMainProductImage(formData: FormData): Promise<AdminActi
     });
     const rest = images.map((i) => i.id).filter((id) => id !== imageId);
     await applyProductImageOrder(productId, storeId, [imageId, ...rest]);
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.main",
       entity: "Product",
       entityId: productId,
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${productId}`);
+    revalidateStorefrontProduct(productId);
     return ok();
   } catch (e) {
     console.error("[setMainProductImage] failed", e);
@@ -752,15 +743,14 @@ export async function setProductImageOrder(formData: FormData): Promise<AdminAct
 
     await applyProductImageOrder(productId, storeId, orderedIds);
 
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.reorder_bulk",
       entity: "Product",
       entityId: productId,
       metadata: { count: orderedIds.length },
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${productId}`);
+    revalidateStorefrontProduct(productId);
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "עדכון סדר תמונות נכשל");
@@ -784,15 +774,14 @@ export async function replaceProductImage(formData: FormData): Promise<AdminActi
       data: { url },
     });
 
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.replace",
       entity: "ProductImage",
       entityId: imageId,
       metadata: { productId: img.productId },
     });
-    revalidatePath("/admin/products");
-    revalidatePath(`/products/${img.productId}`);
+    revalidateStorefrontProduct(img.productId);
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "החלפת תמונה נכשלה");
@@ -838,14 +827,14 @@ export async function reorderProductImage(formData: FormData): Promise<AdminActi
       }),
     ]);
 
-    await logAdminAction({
+    voidLogAdminAction({
       userId,
       action: "product.image.reorder",
       entity: "ProductImage",
       entityId: imageId,
       metadata: { direction, productId: current.productId },
     });
-    revalidatePath("/admin/products");
+    revalidateStorefrontProduct(current.productId);
     return ok();
   } catch (e) {
     return err(e instanceof Error ? e.message : "שינוי סדר תמונה נכשל");

@@ -1,8 +1,21 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AssetImg } from "@/components/asset-img";
+import { adminThumbnailSrc } from "@/lib/image-thumbnail";
+import type { CategoryOpt } from "@/lib/admin/categories-options";
+import {
+  imagesFromUploadedPaths,
+  patchProductListRowFromForm,
+} from "@/lib/admin/product-list-patch";
+import type { ProductListRow } from "@/lib/admin/product-serialize";
+import {
+  ADMIN_LIST_GC_MS,
+  ADMIN_LIST_STALE_MS,
+  adminProductsKeys,
+} from "@/lib/admin/products-query-keys";
 import { AdminModal } from "@/components/admin/admin-modal";
 import { AdminSpinner } from "@/components/admin/admin-spinner";
 import { ProductImagesSection } from "@/components/admin/product-images-section";
@@ -33,6 +46,8 @@ import { serializeProductSpecs, specsForForm, type ProductSpecItem } from "@/lib
 
 type Img = { id: string; url: string; isMain: boolean; sortOrder: number };
 type RelatedProduct = { id: string; name_he: string; name_ar: string; name_en: string; price: number; image: string | null; sortOrder: number };
+export type { CategoryOpt } from "@/lib/admin/categories-options";
+
 export type ProductRow = {
   id: string;
   sku: string;
@@ -59,8 +74,6 @@ export type ProductRow = {
   relatedProducts: RelatedProduct[];
 };
 
-export type CategoryOpt = { id: string; label: string };
-
 function SuccessBar({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 3500);
@@ -73,23 +86,31 @@ function SuccessBar({ message, onDismiss }: { message: string; onDismiss: () => 
   );
 }
 
+async function fetchProductDetail(id: string): Promise<ProductRow> {
+  const res = await fetch(`/api/admin/products/${id}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load product");
+  const data = (await res.json()) as { product: ProductRow };
+  return data.product;
+}
+
 export function ProductsAdminClient({
-  products,
-  categories,
-  galleryDisplay,
+  initialProducts,
+  initialCategories,
+  initialGalleryDisplay,
   initialOpenAdd,
 }: {
-  products: ProductRow[];
-  categories: CategoryOpt[];
-  galleryDisplay: GalleryDisplayConfig;
+  initialProducts: ProductListRow[];
+  initialCategories: CategoryOpt[];
+  initialGalleryDisplay: GalleryDisplayConfig;
   initialOpenAdd?: boolean;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [editProduct, setEditProduct] = useState<ProductRow | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -102,24 +123,84 @@ export function ProductsAdminClient({
     }
   }, [initialOpenAdd, router, searchParams]);
 
-  useEffect(() => {
-    if (!editProduct) return;
-    const fresh = products.find((p) => p.id === editProduct.id);
-    if (!fresh) return;
-    const prevIds = editProduct.images.map((i) => i.id).join(",");
-    const nextIds = fresh.images.map((i) => i.id).join(",");
-    if (prevIds !== nextIds) setEditProduct(fresh);
-  }, [products, editProduct]);
+  const { data: products = initialProducts } = useQuery({
+    queryKey: adminProductsKeys.list,
+    queryFn: async () => initialProducts,
+    initialData: initialProducts,
+    staleTime: ADMIN_LIST_STALE_MS,
+    gcTime: ADMIN_LIST_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
 
-  const refresh = useCallback(() => {
-    startTransition(() => router.refresh());
-  }, [router]);
+  const { data: categories = initialCategories } = useQuery({
+    queryKey: adminProductsKeys.categories,
+    queryFn: async () => initialCategories,
+    initialData: initialCategories,
+    staleTime: ADMIN_LIST_STALE_MS,
+    gcTime: ADMIN_LIST_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
 
-  const handleProductImagesChange = useCallback((productId: string, images: Img[]) => {
-    setEditProduct((prev) => (prev && prev.id === productId ? { ...prev, images } : prev));
-  }, []);
+  const { data: galleryDisplay = initialGalleryDisplay } = useQuery({
+    queryKey: adminProductsKeys.gallery,
+    queryFn: async () => initialGalleryDisplay,
+    initialData: initialGalleryDisplay,
+    staleTime: ADMIN_LIST_STALE_MS,
+    gcTime: ADMIN_LIST_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const categoryOptions = useMemo(() => categories, [categories]);
+
+  const patchList = useCallback(
+    (productId: string, row: ProductListRow, isNew: boolean) => {
+      queryClient.setQueryData<ProductListRow[]>(adminProductsKeys.list, (prev) => {
+        const list = prev ?? initialProducts;
+        if (isNew) return [row, ...list.filter((p) => p.id !== productId)];
+        return list.map((p) => (p.id === productId ? row : p));
+      });
+    },
+    [queryClient, initialProducts],
+  );
+
+  const {
+    data: editProduct,
+    isLoading: editLoading,
+    error: editError,
+  } = useQuery({
+    queryKey: adminProductsKeys.product(editId ?? ""),
+    queryFn: () => fetchProductDetail(editId!),
+    enabled: !!editId,
+    staleTime: ADMIN_LIST_STALE_MS,
+    gcTime: ADMIN_LIST_GC_MS,
+  });
+
+  const handleProductImagesChange = useCallback(
+    (productId: string, images: Img[]) => {
+      queryClient.setQueryData<ProductRow>(adminProductsKeys.product(productId), (prev) =>
+        prev ? { ...prev, images } : prev,
+      );
+      const main = images.find((i) => i.isMain) ?? images[0];
+      queryClient.setQueryData<ProductListRow[]>(adminProductsKeys.list, (prev) => {
+        const list = prev ?? [];
+        return list.map((p) =>
+          p.id === productId
+            ? {
+                ...p,
+                images: main ? [{ ...main }] : [],
+              }
+            : p,
+        );
+      });
+    },
+    [queryClient],
+  );
 
   const handleUpsert = async (form: FormData, files: File[] | null, editing: ProductRow | null) => {
+    setSaving(true);
     perfStart(CREATE_PRODUCT_PERF.total);
     const clientT0 = performance.now();
 
@@ -129,12 +210,15 @@ export function ProductsAdminClient({
     if (!res.ok) {
       perfEnd(CREATE_PRODUCT_PERF.total, { failed: "upsertProduct" });
       setToast(res.error);
+      setSaving(false);
       return;
     }
     const pid = res.data.productId;
+    const isNew = !editing;
+    const hadImages = (editing?.images.length ?? 0) > 0;
+    let listImages = editing?.images ?? [];
 
     if (files?.length && pid) {
-      const hadImages = (editing?.images.length ?? 0) > 0;
       let order = editing?.images.length ?? 0;
       perfStart(CREATE_PRODUCT_PERF.images);
       const uploadT0 = performance.now();
@@ -167,29 +251,50 @@ export function ProductsAdminClient({
           setToast(batchRes.error);
           perfEnd(CREATE_PRODUCT_PERF.images, { failed: true });
           perfEnd(CREATE_PRODUCT_PERF.total, { failed: "images" });
+          setSaving(false);
           return;
         }
+        listImages = imagesFromUploadedPaths(
+          paths.sort((a, b) => a.i - b.i).map((p) => p.path),
+          editing?.images.length ?? 0,
+          hadImages,
+        );
         perfEnd(CREATE_PRODUCT_PERF.images, { count: files.length, uploadMs });
       } catch (e) {
         console.error("[handleUpsert] product image upload failed", e);
         perfEnd(CREATE_PRODUCT_PERF.images, { error: true });
         perfEnd(CREATE_PRODUCT_PERF.total, { failed: "images" });
         setToast(e instanceof Error ? e.message : t("imageSaveFailed"));
+        setSaving(false);
         return;
       }
     }
 
+    const listRow = patchProductListRowFromForm(
+      form,
+      pid,
+      products.find((p) => p.id === pid),
+      listImages,
+    );
+    patchList(pid, listRow, isNew);
+
+    if (editing) {
+      queryClient.setQueryData<ProductRow>(adminProductsKeys.product(pid), {
+        ...editing,
+        ...listRow,
+        images: listImages.length ? listImages : editing.images,
+      });
+    }
+
     setToast(t("savedSuccessfully"));
     setAddOpen(false);
-    setEditProduct(null);
-
-    perfStart(CREATE_PRODUCT_PERF.revalidate);
-    refresh();
-    perfEnd(CREATE_PRODUCT_PERF.revalidate, { note: "router.refresh() — RSC refetch admin list" });
+    setEditId(null);
+    setSaving(false);
 
     perfEnd(CREATE_PRODUCT_PERF.total, {
       clientMs: Math.round(performance.now() - clientT0),
       hadImages: Boolean(files?.length),
+      note: "no router.refresh — local cache patch only",
     });
   };
 
@@ -201,7 +306,10 @@ export function ProductsAdminClient({
     else {
       setToast(t("deletedSuccessfully"));
       setDeleteId(null);
-      refresh();
+      queryClient.setQueryData<ProductListRow[]>(adminProductsKeys.list, (prev) =>
+        (prev ?? []).filter((p) => p.id !== id),
+      );
+      queryClient.removeQueries({ queryKey: adminProductsKeys.product(id) });
     }
   };
 
@@ -258,7 +366,7 @@ export function ProductsAdminClient({
             else {
               setToast(t("allProductsDeletedToast"));
               setBulkDeleteOpen(false);
-              refresh();
+              queryClient.setQueryData<ProductListRow[]>(adminProductsKeys.list, []);
             }
           } finally {
             setBulkDeleting(false);
@@ -285,7 +393,12 @@ export function ProductsAdminClient({
                 <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/80">
                   <td className="px-4 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                      <AssetImg path={main?.url} alt="" className="h-full w-full object-cover" />
+                      <AssetImg
+                        path={main?.url ? adminThumbnailSrc(main.url, 120) : null}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        sizes="48px"
+                      />
                     </div>
                   </td>
                   <td className="px-4 py-2 font-medium text-slate-900">{p.name_he}</td>
@@ -303,7 +416,7 @@ export function ProductsAdminClient({
                   <td className="px-4 py-2 text-end">
                     <button
                       type="button"
-                      onClick={() => setEditProduct(p)}
+                      onClick={() => setEditId(p.id)}
                       className="text-blue-600 hover:underline"
                     >
                       {t("edit")}
@@ -327,7 +440,7 @@ export function ProductsAdminClient({
         )}
       </div>
 
-      {pending && (
+      {saving && (
         <div className="fixed bottom-6 left-6 z-[90] flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-white shadow-lg">
           <AdminSpinner className="h-4 w-4 border-t-white" />
           <span className="text-sm">{t("updating")}</span>
@@ -342,7 +455,7 @@ export function ProductsAdminClient({
       >
         <ProductForm
           key="new-product"
-          categories={categories}
+          categories={categoryOptions}
           allProducts={products}
           galleryDisplay={galleryDisplay}
           onSubmit={(fd, files) => handleUpsert(fd, files, null)}
@@ -351,12 +464,21 @@ export function ProductsAdminClient({
       </AdminModal>
 
       <AdminModal
-        open={!!editProduct}
-        onClose={() => setEditProduct(null)}
+        open={!!editId}
+        onClose={() => setEditId(null)}
         title={t("edit")}
         size="xl"
       >
-        {editProduct && (
+        {editLoading && (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-600">
+            <AdminSpinner />
+            <span>{t("updating")}</span>
+          </div>
+        )}
+        {editError && (
+          <p className="py-8 text-center text-sm text-red-600">{(editError as Error).message}</p>
+        )}
+        {editProduct && !editLoading && (
           <ProductForm
             key={editProduct.id}
             categories={categories}
@@ -364,7 +486,7 @@ export function ProductsAdminClient({
             galleryDisplay={galleryDisplay}
             product={editProduct}
             onSubmit={(fd, files) => handleUpsert(fd, files, editProduct)}
-            onCancel={() => setEditProduct(null)}
+            onCancel={() => setEditId(null)}
             onImagesChange={handleProductImagesChange}
           />
         )}
@@ -409,7 +531,7 @@ function ProductForm({
   onImagesChange,
 }: {
   categories: CategoryOpt[];
-  allProducts: ProductRow[];
+  allProducts: ProductListRow[];
   galleryDisplay: GalleryDisplayConfig;
   product?: ProductRow;
   onSubmit: (fd: FormData, files: File[] | null) => Promise<void>;

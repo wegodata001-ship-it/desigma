@@ -1,19 +1,28 @@
 /** Single source for storefront product card dimensions. */
 
-/** Fixed image frame — must use `block`, not `flex`, so the image child gets full width. */
-export const PRODUCT_CARD_IMAGE_HEIGHT_PX = 260;
+export const PRODUCT_CARD_IMAGE_HEIGHT_MOBILE_PX = 180;
+export const PRODUCT_CARD_IMAGE_HEIGHT_DESKTOP_PX = 260;
 
+/** Image zone — fixed height, never grows; does not cover content below. */
 export const PRODUCT_CARD_IMAGE_WRAPPER_CLASS =
-  "product-card-image-wrapper relative block h-[260px] min-h-[260px] w-full shrink-0 overflow-hidden rounded-xl border border-zinc-800/80";
+  "product-card-image-wrapper relative z-0 block h-[180px] w-full shrink-0 overflow-hidden rounded-xl border border-zinc-800/80 md:h-[260px]";
 
-export const PRODUCT_CARD_BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-2 pt-2.5";
+/** Name, price, colors, stock, CTA — must stay visible (no overflow:hidden). */
+export const PRODUCT_CARD_CONTENT_CLASS =
+  "product-card-content relative z-10 flex flex-1 flex-col gap-2 px-1 pb-1 pt-2 md:gap-2.5 md:px-2 md:pb-2";
 
-/** Tailwind classes for card shell width (mobile full → tablet 280 → desktop 320). */
-export const PRODUCT_CARD_WIDTH_CLASS =
-  "w-full max-w-full md:max-w-[280px] lg:max-w-[320px]";
+/** Card shell — flex column; min-height for grid rows, grows if needed. */
+export const PRODUCT_CARD_SHELL_CLASS =
+  "product-card group/card flex h-full min-h-[300px] w-full max-w-none flex-col rounded-2xl border border-zinc-800 bg-[#111827] p-2 shadow-[0_12px_30px_-18px_rgba(0,0,0,0.7)] transition hover:border-orange-500/40 active:scale-[0.99] md:min-h-[420px] md:p-2.5 lg:p-3";
 
-/** Grid — equal-height rows without forcing excessive min-height. */
+/**
+ * Storefront product grid — KSP / Amazon style.
+ * Mobile: 2 | Tablet: 3 | Desktop & large laptop: 4 per row.
+ */
 export const PRODUCT_CARD_GRID_CLASS =
-  "grid grid-cols-1 items-stretch gap-4 sm:justify-items-center md:grid-cols-[repeat(auto-fill,280px)] md:justify-center lg:grid-cols-[repeat(auto-fill,320px)]";
+  "grid grid-cols-2 items-stretch gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4";
 
-export const PRODUCT_CARD_GRID_ITEM_CLASS = "flex h-full w-full justify-center";
+export const PRODUCT_CARD_GRID_ITEM_CLASS = "flex min-w-0";
+
+/** @deprecated Use PRODUCT_CARD_CONTENT_CLASS */
+export const PRODUCT_CARD_BODY_CLASS = PRODUCT_CARD_CONTENT_CLASS;

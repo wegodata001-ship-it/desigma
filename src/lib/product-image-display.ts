@@ -18,9 +18,9 @@ export const PRODUCT_IMAGE_SIZES = {
 
 export type CatalogImageVariant = "card" | "gallery-main" | "thumb";
 
-/** Fixed frame heights — card uses explicit 260px (see product-card-layout). */
+/** Card frame fills the fixed image wrapper (180px mobile / 260px desktop). */
 export const CATALOG_FRAME_CLASS: Record<CatalogImageVariant, string> = {
-  card: "product-card-image relative h-full min-h-[260px] w-full overflow-hidden",
+  card: "product-card-image relative h-full w-full overflow-hidden",
   "gallery-main":
     "relative h-[320px] min-h-[320px] w-full overflow-hidden sm:h-[400px] sm:min-h-[400px] md:h-[480px] md:min-h-[480px] lg:h-[550px] lg:min-h-[550px]",
   thumb: "relative h-20 min-h-20 w-20 min-w-20 shrink-0 overflow-hidden",

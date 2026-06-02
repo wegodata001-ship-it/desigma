@@ -125,25 +125,24 @@ export function ProductImagesSection({
   const persistBundle = useCallback(
     async (bundle: StudioExportBundle, opts: { imageId?: string; setMain?: boolean }) => {
       if (!product?.id) return;
-      const path = await uploadAdminAsset(bundle.display, "products", {
-        entityId: product.id,
-        originalName: bundle.display.name,
-        compress: false,
-      });
-      const base = path.replace(/\.[^/]+$/, "");
-      const stem = base.split("/").pop() ?? "image";
-      void Promise.all([
+      const baseStem = bundle.display.name.replace(/\.[^.]+$/, "") || "image";
+      const [path] = await Promise.all([
+        uploadAdminAsset(bundle.display, "products", {
+          entityId: product.id,
+          originalName: bundle.display.name,
+          compress: false,
+        }),
         uploadAdminAsset(bundle.original, "products", {
           entityId: product.id,
-          originalName: `${stem}-original.jpg`,
+          originalName: `${baseStem}-original.jpg`,
           compress: false,
         }),
         uploadAdminAsset(bundle.thumb, "products", {
           entityId: product.id,
-          originalName: `${stem}-thumb.webp`,
+          originalName: `${baseStem}-thumb.webp`,
           compress: false,
         }),
-      ]).catch(() => undefined);
+      ]);
 
       if (opts.imageId) {
         const fd = new FormData();

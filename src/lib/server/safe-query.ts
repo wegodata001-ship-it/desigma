@@ -1,6 +1,7 @@
 import { logSafeQueryError, logSafeQuerySlow, runtimeLog } from "@/lib/runtime-log/server";
 import { getRequestPath } from "@/lib/server/request-path";
 import { withDbRetry } from "@/lib/server/db-retry";
+import { perfQuery } from "@/lib/server/perf-query";
 
 export type SafeQueryOptions = {
   /** Reject the inner promise after this many ms (returns fallback). */
@@ -47,7 +48,7 @@ export async function safeQuery<T>(
   }
 
   try {
-    const run = () => withDbRetry(fn, { attempts: 3, delayMs: 350 });
+    const run = () => withDbRetry(() => perfQuery(name, fn), { attempts: 3, delayMs: 350 });
     const p = opts?.timeoutMs ? raceWithTimeout(run(), opts.timeoutMs, name) : run();
     const result = await p;
     const durationMs = Date.now() - started;

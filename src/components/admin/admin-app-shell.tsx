@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
+import { AdminQueryProvider } from "@/components/admin/admin-query-provider";
 import { AdminI18nProvider, isRtl, useAdminI18n } from "@/lib/admin-i18n";
 
 const NAV: { href: string; label: string; Icon: React.FC<{ className?: string }>; badgeKey?: "contacts" }[] = [
@@ -51,6 +52,7 @@ export function AdminAppShell({
 }) {
   return (
     <AdminI18nProvider>
+      <AdminQueryProvider>
       <AdminAppShellInner
         storeName={storeName}
         userName={userName}
@@ -59,6 +61,7 @@ export function AdminAppShell({
       >
         {children}
       </AdminAppShellInner>
+      </AdminQueryProvider>
     </AdminI18nProvider>
   );
 }
@@ -128,6 +131,8 @@ function AdminAppShellInner({
               <Link
                 key={href}
                 href={href}
+                prefetch
+                onMouseEnter={() => router.prefetch(href)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                   active
                     ? "bg-white/15 text-white shadow-inner ring-1 ring-white/20"
