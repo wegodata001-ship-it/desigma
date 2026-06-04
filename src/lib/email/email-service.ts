@@ -5,8 +5,13 @@ import { getEmailConfig, isEmailConfigured } from "@/lib/email/config";
 import { loadOrderEmailPayload } from "@/lib/email/order-email-data";
 import { logEmailFailure, logEmailSkipped, logEmailSuccess } from "@/lib/email/logger";
 import { isOrderPaidForEmail } from "@/lib/payments/post-payment-emails";
-import { adminOrderUrl } from "@/lib/app-url";
-import { publicAbsolutePath } from "@/lib/base-url";
+import {
+  emailAdminPath,
+  emailOrderViewUrl,
+  emailPublicPath,
+  getEmailPublicBaseUrl,
+  sanitizeEmailHtml,
+} from "@/lib/email/email-links";
 import { loadStoreEmailBrand, resolveAdminOrderEmail } from "@/lib/email/store-branding";
 import { getMailTransporter } from "@/lib/email/transporter";
 import { renderContactAutoReplyEmail } from "@/lib/email/templates/contact-auto-reply";
@@ -18,31 +23,47 @@ import { renderPasswordResetEmail } from "@/lib/email/templates/password-reset";
 import { renderWelcomeEmail } from "@/lib/email/templates/welcome";
 import { wrapEmailHtml } from "@/lib/email/templates/layout";
 
-type SendOpts = { to: string; subject: string; html: string; type: Parameters<typeof logEmailSuccess>[0] };
+type SendOpts = {
+  to: string;
+  subject: string;
+  html: string;
+  type: Parameters<typeof logEmailSuccess>[0];
+  meta?: { orderId?: string };
+};
 
-async function sendMail(opts: SendOpts): Promise<boolean> {
+async function sendMail(opts: SendOpts): Promise<void> {
+  console.log("EMAIL SEND START", {
+    type: opts.type,
+    to: opts.to,
+    orderId: opts.meta?.orderId,
+  });
+
   if (!isEmailConfigured()) {
     logEmailSkipped(opts.type, "smtp_not_configured");
-    return false;
+    console.error("EMAIL ERROR", { type: opts.type, reason: "smtp_not_configured" });
+    throw new Error("SMTP not configured (SMTP_USER / SMTP_PASS / EMAIL_FROM_ADDRESS)");
   }
   const transporter = getMailTransporter();
   if (!transporter) {
     logEmailSkipped(opts.type, "transporter_unavailable");
-    return false;
+    console.error("EMAIL ERROR", { type: opts.type, reason: "transporter_unavailable" });
+    throw new Error("SMTP transporter unavailable");
   }
   const cfg = getEmailConfig();
+  const html = sanitizeEmailHtml(opts.html);
   try {
     await transporter.sendMail({
       from: `"${cfg.fromName}" <${cfg.fromAddress}>`,
       to: opts.to,
       subject: opts.subject,
-      html: opts.html,
+      html,
     });
-    logEmailSuccess(opts.type, opts.to);
-    return true;
+    logEmailSuccess(opts.type, opts.to, opts.meta);
+    console.log("EMAIL SEND OK", { type: opts.type, to: opts.to, orderId: opts.meta?.orderId });
   } catch (err) {
-    logEmailFailure(opts.type, opts.to, err);
-    return false;
+    console.error("EMAIL ERROR", { type: opts.type, to: opts.to, orderId: opts.meta?.orderId, err });
+    logEmailFailure(opts.type, opts.to, err, opts.meta);
+    throw err;
   }
 }
 
@@ -77,20 +98,34 @@ export async function sendContactAutoReplyEmail(
   await sendMail({ to: data.email.trim(), subject, html, type: "contact_auto_reply" });
 }
 
+/** Customer order confirmation (after payment). */
 export async function sendOrderConfirmationEmail(orderId: string): Promise<void> {
+  console.log("EMAIL SEND START", { flow: "order_confirmation", orderId });
+
   if (!(await isOrderPaidForEmail(orderId))) {
     logEmailSkipped("order_confirmation", "payment_not_paid");
+    console.warn("[email] order_confirmation skipped — payment_not_paid", { orderId });
     return;
   }
   const payload = await loadOrderEmailPayload(orderId);
   if (!payload) {
     logEmailSkipped("order_confirmation", "order_not_found");
+    console.warn("[email] order_confirmation skipped — order_not_found", { orderId });
     return;
   }
-  if (!payload.order.customerEmail?.trim()) {
+  const customerEmail = payload.order.customerEmail?.trim();
+  if (!customerEmail) {
     logEmailSkipped("order_confirmation", "no_customer_email");
+    console.warn("[email] order_confirmation skipped — no_customer_email", { orderId });
     return;
   }
+
+  console.log("EMAIL SEND START", {
+    type: "order_confirmation",
+    orderId,
+    orderNumber: payload.order.orderNumber,
+    customerEmail,
+  });
 
   const brand = await loadStoreEmailBrand(payload.order.storeId);
   const { subject, html } = renderOrderConfirmationEmail({
@@ -102,22 +137,28 @@ export async function sendOrderConfirmationEmail(orderId: string): Promise<void>
     statusLabel: payload.statusLabel,
   });
 
-  console.log("[email] order_confirmation", {
+  console.log("[email] order_confirmation links", {
     orderNumber: payload.order.orderNumber,
-    viewOrderUrl: `${brand.storeUrl}/orders/${encodeURIComponent(payload.order.orderNumber)}`,
+    viewOrderUrl: emailOrderViewUrl(payload.order.orderNumber),
+    publicBase: getEmailPublicBaseUrl(),
   });
 
   await sendMail({
-    to: payload.order.customerEmail,
+    to: customerEmail,
     subject,
     html,
     type: "order_confirmation",
+    meta: { orderId },
   });
 }
 
+/** Owner / admin new-order alert (after payment). */
 export async function sendNewOrderEmail(orderId: string): Promise<void> {
+  console.log("EMAIL SEND START", { flow: "new_order", orderId });
+
   if (!(await isOrderPaidForEmail(orderId))) {
     logEmailSkipped("new_order", "payment_not_paid");
+    console.warn("[email] new_order skipped — payment_not_paid", { orderId });
     return;
   }
   const payload = await loadOrderEmailPayload(orderId);
@@ -151,10 +192,10 @@ export async function sendNewOrderEmail(orderId: string): Promise<void> {
     total: Number(order.total),
     currency: payload.currency,
     items: payload.items,
-    adminUrl: adminOrderUrl(order.id),
+    adminUrl: emailAdminPath(`/orders/${encodeURIComponent(order.id)}`),
   });
 
-  await sendMail({ to: adminTo, subject, html, type: "new_order" });
+  await sendMail({ to: adminTo, subject, html, type: "new_order", meta: { orderId } });
 }
 
 export async function sendOrderStatusEmail(
@@ -173,20 +214,29 @@ export async function sendOrderStatusEmail(
   }
 
   const brand = await loadStoreEmailBrand(payload.order.storeId);
+  const order = payload.order;
   const { subject, html } = renderOrderStatusEmail({
     brand,
-    customerName: payload.order.customerName,
-    orderNumber: payload.order.orderNumber,
-    orderId: payload.order.id,
+    customerName: order.customerName,
+    orderNumber: order.orderNumber,
+    orderId: order.id,
     statusKey,
     statusLabel: payload.statusLabel,
-    total: Number(payload.order.total),
+    trackingStatus: order.trackingStatus,
+    total: Number(order.total),
     currency: payload.currency,
-    trackingNumber: extras?.trackingNumber,
-    carrier: extras?.carrier,
+    trackingNumber: extras?.trackingNumber ?? order.trackingNumber,
+    carrier: extras?.carrier ?? order.trackingCarrier,
+    trackingUrl: order.trackingUrl,
   });
 
-  await sendMail({ to: payload.order.customerEmail, subject, html, type: "order_status" });
+  await sendMail({
+    to: payload.order.customerEmail,
+    subject,
+    html,
+    type: "order_status",
+    meta: { orderId },
+  });
 }
 
 export async function sendCustomerWelcomeEmail(storeId: string, data: { name: string; email: string }): Promise<void> {
@@ -194,7 +244,7 @@ export async function sendCustomerWelcomeEmail(storeId: string, data: { name: st
   const { subject, html } = renderWelcomeEmail({
     brand,
     name: data.name,
-    shopUrl: publicAbsolutePath("/products"),
+    shopUrl: emailPublicPath("/products"),
   });
   await sendMail({ to: data.email, subject, html, type: "welcome" });
 }
@@ -204,7 +254,16 @@ export async function sendPasswordResetEmail(
   data: { name: string; email: string; resetUrl: string },
 ): Promise<void> {
   const brand = await loadStoreEmailBrand(storeId);
-  const { subject, html } = renderPasswordResetEmail({ brand, name: data.name, resetUrl: data.resetUrl });
+  let resetUrl = data.resetUrl;
+  try {
+    const u = new URL(resetUrl);
+    if (/localhost|127\.0\.0\.1/i.test(u.hostname)) {
+      resetUrl = emailPublicPath(`${u.pathname}${u.search}`);
+    }
+  } catch {
+    if (resetUrl.startsWith("/")) resetUrl = emailPublicPath(resetUrl);
+  }
+  const { subject, html } = renderPasswordResetEmail({ brand, name: data.name, resetUrl });
   await sendMail({ to: data.email, subject, html, type: "password_reset" });
 }
 

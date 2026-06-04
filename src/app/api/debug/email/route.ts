@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getEmailConfig, isEmailConfigured } from "@/lib/email/config";
 import { getMailTransporter } from "@/lib/email/transporter";
 import { getPublicBaseUrl } from "@/lib/base-url";
+import { emailOrderViewUrl, getEmailAdminBaseUrl, getEmailPublicBaseUrl } from "@/lib/email/email-links";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -46,6 +47,9 @@ export async function GET() {
     contactReceiver: cfg.contactReceiver || null,
     adminOrderReceiver: cfg.adminOrderReceiver || null,
     publicBaseUrlForLinks: getPublicBaseUrl(),
+    emailPublicBaseUrl: getEmailPublicBaseUrl(),
+    emailAdminBaseUrl: getEmailAdminBaseUrl(),
+    sampleOrderLink: emailOrderViewUrl("DESIGMA-1001"),
     smtpVerify,
     orderEmailsNote: "Sent only when paymentStatus=PAID (after demo-complete or webhook)",
     diagnosis: diagnosis.length ? diagnosis : ["SMTP OK — if still no mail, check spam or payment_not_paid in logs"],

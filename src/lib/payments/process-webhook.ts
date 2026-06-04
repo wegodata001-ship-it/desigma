@@ -175,8 +175,16 @@ export async function processPaymentWebhook(input: WebhookInput): Promise<{ ok: 
     });
   });
 
-  // Emails must not depend on inventory — customer already paid.
   if (!wasAlreadyPaid) {
+    const { recordOrderTrackingStatus } = await import("@/lib/orders/tracking-service");
+    const { OrderTrackingStatus } = await import("@prisma/client");
+    await recordOrderTrackingStatus({
+      orderId: order.id,
+      storeId,
+      status: OrderTrackingStatus.PAID,
+      note: "התשלום אושר",
+      silent: true,
+    });
     notifyOrderPaidEmailsAsync(order.id);
   }
 

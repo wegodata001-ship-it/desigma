@@ -47,6 +47,18 @@ enum OrderFulfillmentStatus {
   COMPLETED
 }
 
+/// Public order tracking timeline (storefront + emails).
+enum OrderTrackingStatus {
+  NEW
+  PAID
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
 enum OrderPaymentStatus {
   UNPAID
   PAID
@@ -109,6 +121,7 @@ model Store {
   deliveryOptions   DeliveryOption[]
   coupons           Coupon[]
   orders            Order[]
+  orderStatusHistory OrderStatusHistory[]
   orderItems        OrderItem[]
   payments          Payment[]
   loyaltySettings   LoyaltySettings?
@@ -517,12 +530,18 @@ model Order {
   loyaltyPointsRedeemed Int               @default(0)
   inventoryReducedAt   DateTime?
   inventoryError       String?
+  trackingStatus       OrderTrackingStatus  @default(NEW)
+  statusUpdatedAt      DateTime?
+  trackingUrl          String?
+  trackingNumber       String?
+  trackingCarrier      String?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  items    OrderItem[]
-  payments Payment[]
+  items           OrderItem[]
+  payments        Payment[]
   loyaltyTransactions LoyaltyTransaction[]
+  statusHistory   OrderStatusHistory[]
 
   @@unique([storeId, orderNumber])
   @@index([storeId])
@@ -563,6 +582,22 @@ model PaymentWebhookLog {
   @@index([storeId])
   @@index([orderId])
   @@index([createdAt])
+}
+
+model OrderStatusHistory {
+  id        String              @id @default(cuid())
+  storeId   String
+  store     Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderTrackingStatus
+  note      String?
+  createdAt DateTime            @default(now())
+  updatedBy String?
+
+  @@index([storeId])
+  @@index([orderId])
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {

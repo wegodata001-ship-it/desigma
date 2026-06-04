@@ -1,5 +1,5 @@
 import type { StoreEmailBrand } from "@/lib/email/store-branding";
-import { storeOrderPath } from "@/lib/app-urls-shared";
+import { emailOrderViewUrl, emailTrackOrderUrl } from "@/lib/email/email-links";
 import { absoluteAssetUrl, emailButton, infoRow } from "@/lib/email/templates/layout";
 
 export type OrderEmailLine = {
@@ -125,7 +125,7 @@ export function renderContactFooter(brand: StoreEmailBrand): string {
     <div style="font-weight:700;color:#f97316;margin-bottom:8px;">יצירת קשר</div>
     <p style="margin:0;">טלפון: <a href="tel:${phone.replace(/\D/g, "")}" style="color:#fff;">${escapeHtml(phone)}</a></p>
     <p style="margin:8px 0 0;">אימייל: <a href="mailto:${escapeHtml(email)}" style="color:#fff;">${escapeHtml(email)}</a></p>
-    <p style="margin:12px 0 0;"><a href="${brand.storeUrl}/contact" style="color:${brand.accentColor};font-weight:600;">דף יצירת קשר →</a></p>
+    <p style="margin:12px 0 0;"><a href="${brand.legalUrls.contact}" style="color:${brand.accentColor};font-weight:600;">דף יצירת קשר →</a></p>
   </div>`;
 }
 
@@ -134,5 +134,14 @@ export function renderViewOrderButton(
   orderNumber: string,
   label = "צפייה בהזמנה שלי",
 ): string {
-  return `<p style="margin:24px 0 8px;text-align:center;">${emailButton(`${brand.storeUrl}${storeOrderPath(orderNumber)}`, label, brand.accentColor)}</p>`;
+  return `<p style="margin:24px 0 8px;text-align:center;">${emailButton(emailOrderViewUrl(orderNumber), label, brand.accentColor)}</p>`;
+}
+
+export function renderTrackOrderButton(
+  brand: StoreEmailBrand,
+  orderNumber: string,
+  label = "מעקב הזמנה",
+): string {
+  const href = emailTrackOrderUrl(orderNumber);
+  return `<p style="margin:8px 0;text-align:center;">${emailButton(href, label, false)}</p>`;
 }

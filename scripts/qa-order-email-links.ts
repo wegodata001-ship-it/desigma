@@ -10,6 +10,7 @@ function stripTrailingSlash(url: string): string {
 }
 
 import { getAdminBaseUrl, getPublicBaseUrl } from "../src/lib/base-url";
+import { getEmailPublicBaseUrl } from "../src/lib/email/email-links";
 
 function resolveStoreUrl(): string {
   return process.env.STORE_URL?.trim()
@@ -23,7 +24,7 @@ function resolveAdminUrl(): string {
     : getAdminBaseUrl();
 }
 
-const STORE_ROUTES = ["/terms", "/privacy", "/refunds", "/shipping", "/legal", "/contact"];
+const STORE_ROUTES = ["/terms", "/privacy", "/refunds", "/shipping", "/legal", "/contact", "/track-order"];
 
 async function checkUrl(url: string): Promise<{ url: string; ok: boolean; status?: number; error?: string }> {
   try {
@@ -47,7 +48,10 @@ async function main() {
   console.log(`STORE_URL:  ${storeUrl}`);
   console.log(`ADMIN_URL:  ${adminUrl}\n`);
 
-  console.log("Customer email links:");
+  console.log("Transactional email base (always production):");
+  console.log(`  • ${getEmailPublicBaseUrl()}`);
+
+  console.log("\nCustomer email links:");
   console.log(`  • ${customerOrderLink}`);
   for (const l of legalLinks) console.log(`  • ${l}`);
   console.log(`  • ${storeUrl}/contact`);

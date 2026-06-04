@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPublicBaseUrl, publicAbsolutePath } from "@/lib/base-url";
+import { emailLegalUrls, emailPublicPath, getEmailPublicBaseUrl } from "@/lib/email/email-links";
 import { prisma } from "@/lib/prisma";
 import { getEmailConfig } from "@/lib/email/config";
 import { absoluteAssetUrl } from "@/lib/email/templates/layout";
@@ -22,6 +22,8 @@ export type StoreEmailBrand = {
     refunds: string;
     shipping: string;
     legal: string;
+    contact: string;
+    trackOrder: string;
   };
 };
 
@@ -40,7 +42,8 @@ export async function loadStoreEmailBrand(storeId: string): Promise<StoreEmailBr
   ]);
 
   const cfg = getEmailConfig();
-  const storeUrl = getPublicBaseUrl();
+  const storeUrl = getEmailPublicBaseUrl();
+  const legal = emailLegalUrls();
 
   return {
     storeId,
@@ -52,11 +55,13 @@ export async function loadStoreEmailBrand(storeId: string): Promise<StoreEmailBr
     storeUrl,
     baseUrl: storeUrl,
     legalUrls: {
-      terms: publicAbsolutePath("/terms"),
-      privacy: publicAbsolutePath("/privacy"),
-      refunds: publicAbsolutePath("/refunds"),
-      shipping: publicAbsolutePath("/shipping"),
-      legal: publicAbsolutePath("/legal"),
+      terms: legal.terms,
+      privacy: legal.privacy,
+      refunds: legal.refunds,
+      shipping: emailPublicPath("/shipping"),
+      legal: emailPublicPath("/legal"),
+      contact: legal.contact,
+      trackOrder: legal.trackOrder,
     },
   };
 }

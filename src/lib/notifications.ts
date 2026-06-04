@@ -1,9 +1,7 @@
 import "server-only";
 
-import {
-  queueEmail,
-  sendOrderStatusEmail,
-} from "@/lib/email/email-service";
+import type { OrderTrackingStatus } from "@prisma/client";
+import { queueEmail, sendOrderStatusEmail } from "@/lib/email/email-service";
 import { sendPostPaymentOrderEmails } from "@/lib/payments/post-payment-emails";
 
 /** Sends customer confirmation + owner notification — only when order is PAID. */
@@ -48,4 +46,9 @@ export function notifyOrderStatusChangeAsync(
   extras?: { trackingNumber?: string | null; carrier?: string | null },
 ): void {
   queueEmail(() => sendOrderStatusEmail(orderId, statusKey, extras));
+}
+
+/** Customer email after admin updates tracking timeline. */
+export function notifyOrderTrackingStatusAsync(orderId: string, _status: OrderTrackingStatus): void {
+  queueEmail(() => sendOrderStatusEmail(orderId, _status));
 }

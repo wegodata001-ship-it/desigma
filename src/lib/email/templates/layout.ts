@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPublicBaseUrl } from "@/lib/base-url";
+import { EMAIL_STORE_NAME, emailLegalUrls, getEmailPublicBaseUrl } from "@/lib/email/email-links";
 
 const BRAND = "#f97316";
 const BG = "#0a0f1a";
@@ -16,7 +16,7 @@ export type EmailLayoutBrand = {
 export function absoluteAssetUrl(path: string | null | undefined): string | null {
   if (!path?.trim()) return null;
   const p = path.trim();
-  const base = getPublicBaseUrl();
+  const base = getEmailPublicBaseUrl();
   if (p.startsWith("http://") || p.startsWith("https://")) return p;
   if (p.startsWith("/")) return `${base}${p}`;
   if (p.startsWith("demo/") || p.startsWith("products/")) return `${base}/${p}`;
@@ -68,6 +68,7 @@ export function wrapEmailHtml(
     : `<div style="font-size:11px;letter-spacing:0.15em;color:${accent};font-weight:700;">${escapeHtml(storeName.toUpperCase())}</div>`;
 
   const footerExtra = options?.footerExtra ?? "";
+  const standardFooter = renderStandardEmailFooter(brand?.accentColor ?? BRAND);
 
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -95,6 +96,7 @@ export function wrapEmailHtml(
             <td style="padding:20px 28px;border-top:1px solid #1e293b;font-size:12px;color:${MUTED};text-align:center;">
               © ${new Date().getFullYear()} ${escapeHtml(storeName)}
               ${footerExtra}
+              ${standardFooter}
             </td>
           </tr>
         </table>
@@ -103,6 +105,18 @@ export function wrapEmailHtml(
   </table>
 </body>
 </html>`;
+}
+
+export function renderStandardEmailFooter(accent = BRAND): string {
+  const urls = emailLegalUrls();
+  return `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #334155;text-align:center;font-size:12px;line-height:1.8;color:${MUTED};">
+    <div style="font-weight:800;font-size:13px;letter-spacing:0.12em;color:#e2e8f0;">${EMAIL_STORE_NAME}</div>
+    <p style="margin:8px 0 0;">תודה על ההזמנה.</p>
+    <p style="margin:4px 0 0;">לשירות לקוחות:<br/><a href="${urls.contact}" style="color:${accent};font-weight:600;">${urls.contact}</a></p>
+    <p style="margin:4px 0 0;">תקנון:<br/><a href="${urls.terms}" style="color:${accent};">${urls.terms}</a></p>
+    <p style="margin:4px 0 0;">מדיניות פרטיות:<br/><a href="${urls.privacy}" style="color:${accent};">${urls.privacy}</a></p>
+    <p style="margin:4px 0 0;">מדיניות החזרות:<br/><a href="${urls.refunds}" style="color:${accent};">${urls.refunds}</a></p>
+  </div>`;
 }
 
 export function infoRow(label: string, value: string): string {

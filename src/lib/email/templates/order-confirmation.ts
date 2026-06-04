@@ -11,6 +11,7 @@ import {
   renderOrderItemsTable,
   renderOrderTotals,
   renderShippingPolicyBrief,
+  renderTrackOrderButton,
   renderViewOrderButton,
   type OrderEmailLine,
 } from "@/lib/email/templates/order-shared";
@@ -78,6 +79,7 @@ export function renderOrderConfirmationEmail(data: OrderConfirmationEmailData): 
     ${renderShippingPolicyBrief()}
     ${renderContactFooter(brand)}
     ${renderViewOrderButton(brand, order.orderNumber)}
+    ${renderTrackOrderButton(brand, order.orderNumber)}
     ${renderLegalFooter(brand)}
   `;
 

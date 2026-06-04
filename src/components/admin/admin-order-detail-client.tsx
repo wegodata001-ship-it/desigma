@@ -22,9 +22,10 @@ export function AdminOrderDetailClient({ detail: initial }: { detail: AdminOrder
       router.refresh();
       setDetail((d) => ({
         ...d,
-        status: String(fd.get("status") ?? d.status),
-        paymentStatus: String(fd.get("paymentStatus") ?? d.paymentStatus),
-        fulfillmentStatus: String(fd.get("fulfillmentStatus") ?? d.fulfillmentStatus),
+        trackingStatus: String(fd.get("trackingStatus") ?? d.trackingStatus),
+        trackingUrl: String(fd.get("trackingUrl") ?? "") || null,
+        trackingNumber: String(fd.get("trackingNumber") ?? "") || null,
+        trackingCarrier: String(fd.get("trackingCarrier") ?? "") || null,
       }));
     }
   }

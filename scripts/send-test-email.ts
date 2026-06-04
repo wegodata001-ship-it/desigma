@@ -28,7 +28,10 @@ loadEnvFile(".env.local", true);
 const host = process.env.SMTP_HOST?.trim() || "smtp-relay.brevo.com";
 const port = Number(process.env.SMTP_PORT?.trim() || "587");
 const user = process.env.SMTP_USER?.trim();
-const pass = process.env.SMTP_PASS?.trim();
+const pass =
+  process.env.SMTP_PASS?.trim() ||
+  process.env.SMTP_PASSWORD?.trim() ||
+  process.env.BREVO_API_KEY?.trim();
 const fromName = process.env.EMAIL_FROM_NAME?.trim() || "DESIGMA";
 const fromAddress = process.env.EMAIL_FROM_ADDRESS?.trim() || "noreply@desigma-shop.com";
 const to =

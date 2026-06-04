@@ -39,6 +39,7 @@ export type FooterData = {
 };
 
 const FOOTER_LINKS: FooterData["legalLinks"] = [
+  { href: "/track-order", labelKey: "orderTracking" },
   { href: "/legal", labelKey: "legalHubLink" },
   { href: "/terms", labelKey: "termsOfUse" },
   { href: "/privacy", labelKey: "privacyPolicy" },

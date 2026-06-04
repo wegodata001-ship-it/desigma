@@ -1,5 +1,17 @@
 import type { AdminOrderDetailDTO } from "@/app/admin/actions";
+import { TRACKING_LABELS_HE } from "@/lib/orders/tracking-status";
 import { useAdminI18n } from "@/lib/admin-i18n";
+
+const TRACKING_OPTIONS = [
+  "NEW",
+  "PAID",
+  "PROCESSING",
+  "PACKED",
+  "SHIPPED",
+  "DELIVERED",
+  "CANCELLED",
+  "REFUNDED",
+] as const;
 
 export function AdminOrderDetailView({
   detail,
@@ -21,56 +33,103 @@ export function AdminOrderDetailView({
           <span className="text-slate-500">{t("date")}:</span>{" "}
           {new Date(detail.createdAt).toLocaleString("he-IL")}
         </div>
+        <div>
+          <a
+            href={`https://desigma-shop.com/track-order/${encodeURIComponent(detail.orderNumber)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-orange-600 hover:underline"
+          >
+            צפייה במעקב לקוח ↗
+          </a>
+        </div>
       </div>
 
       {onSaveStatus && (
         <form
-          className="flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-3"
+          className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
           onSubmit={(e) => {
             e.preventDefault();
             void onSaveStatus(e.currentTarget);
           }}
         >
           <input type="hidden" name="id" value={detail.id} />
-          <label className="text-xs">
-            {t("status")}
-            <select name="status" defaultValue={detail.status} className="mt-1 block rounded border px-2 py-1 text-sm">
-              <option value="PENDING_PAYMENT">PENDING_PAYMENT</option>
-              <option value="PENDING">PENDING</option>
-              <option value="PAID">PAID</option>
-              <option value="PAYMENT_FAILED">PAYMENT_FAILED</option>
-              <option value="ABANDONED">ABANDONED</option>
-              <option value="CANCELLED">CANCELLED</option>
-              <option value="FAILED">FAILED</option>
-            </select>
-          </label>
-          <label className="text-xs">
-            {t("payment")}
-            <select name="paymentStatus" defaultValue={detail.paymentStatus} className="mt-1 block rounded border px-2 py-1 text-sm">
-              <option value="UNPAID">UNPAID</option>
-              <option value="PAID">PAID</option>
-              <option value="REFUNDED">REFUNDED</option>
-              <option value="FAILED">FAILED</option>
-            </select>
-          </label>
-          <label className="text-xs">
-            מעקב / שליחה
-            <select
-              name="fulfillmentStatus"
-              defaultValue={detail.fulfillmentStatus}
-              className="mt-1 block rounded border px-2 py-1 text-sm"
-            >
-              <option value="RECEIVED">RECEIVED</option>
-              <option value="PROCESSING">PROCESSING</option>
-              <option value="PACKED">PACKED</option>
-              <option value="SHIPPED">SHIPPED</option>
-              <option value="COMPLETED">COMPLETED</option>
-            </select>
-          </label>
-          <button type="submit" className="rounded bg-slate-900 px-3 py-1.5 text-xs text-white">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold text-slate-700">
+              סטטוס מעקב
+              <select
+                name="trackingStatus"
+                defaultValue={detail.trackingStatus}
+                className="mt-1 block min-w-[200px] rounded border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                {TRACKING_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s} — {TRACKING_LABELS_HE[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-slate-600">
+              הערה (אופציונלי)
+              <input
+                name="statusNote"
+                className="mt-1 block w-48 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                placeholder="הערה ללקוח"
+              />
+            </label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="text-xs text-slate-600">
+              קישור מעקב משלוח (trackingUrl)
+              <input
+                name="trackingUrl"
+                type="url"
+                defaultValue={detail.trackingUrl ?? ""}
+                placeholder="https://..."
+                className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs text-slate-600">
+              מספר מעקב
+              <input
+                name="trackingNumber"
+                defaultValue={detail.trackingNumber ?? ""}
+                className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs text-slate-600">
+              חברת משלוחים
+              <input
+                name="trackingCarrier"
+                defaultValue={detail.trackingCarrier ?? ""}
+                className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            שינוי סטטוס שולח מייל ללקוח: &quot;ההזמנה שלך עודכנה&quot; + קישור מעקב.
+          </p>
+          <button type="submit" className="rounded bg-slate-900 px-4 py-2 text-xs font-semibold text-white">
             {t("update")}
           </button>
         </form>
+      )}
+
+      {detail.statusHistory.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="font-semibold text-slate-800">היסטוריית סטטוס</h2>
+          <ul className="mt-3 space-y-2 text-xs">
+            {detail.statusHistory.map((h) => (
+              <li key={h.id} className="flex flex-wrap gap-2 border-b border-slate-50 pb-2">
+                <span className="font-mono font-semibold text-slate-800">{h.status}</span>
+                <span className="text-slate-500">
+                  {new Date(h.createdAt).toLocaleString("he-IL")}
+                </span>
+                {h.note && <span className="text-slate-600">— {h.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -132,6 +191,9 @@ export function AdminOrderDetailView({
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="font-semibold text-slate-800">{t("payment")}</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          תשלום: {detail.paymentStatus} · מעקב: {detail.trackingStatus}
+        </p>
         <ul className="mt-2 space-y-1 font-mono text-xs">
           {detail.payments.length === 0 && <li className="text-slate-500">אין רשומות תשלום</li>}
           {detail.payments.map((p) => (

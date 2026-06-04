@@ -1,11 +1,20 @@
 import "server-only";
 
 export function getEmailConfig() {
+  const pass =
+    process.env.SMTP_PASS?.trim() ||
+    process.env.SMTP_PASSWORD?.trim() ||
+    process.env.BREVO_API_KEY?.trim() ||
+    "";
+  const user =
+    process.env.SMTP_USER?.trim() ||
+    process.env.SMTP_USERNAME?.trim() ||
+    "";
   return {
     host: process.env.SMTP_HOST?.trim() || "smtp-relay.brevo.com",
     port: Number(process.env.SMTP_PORT?.trim() || "587"),
-    user: process.env.SMTP_USER?.trim() || "",
-    pass: process.env.SMTP_PASS?.trim() || "",
+    user,
+    pass,
     fromName: process.env.EMAIL_FROM_NAME?.trim() || "DESIGMA",
     fromAddress: process.env.EMAIL_FROM_ADDRESS?.trim() || "noreply@desigma-shop.com",
     contactReceiver:

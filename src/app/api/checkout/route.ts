@@ -311,6 +311,9 @@ export async function POST(req: Request) {
     );
     orderId = created.orderId;
     orderNumber = created.orderNumber;
+
+    const { recordOrderCreatedTracking } = await import("@/lib/orders/tracking-service");
+    await recordOrderCreatedTracking(orderId, storeId);
   } catch (err) {
     console.error("[checkout] order create failed", err);
     return NextResponse.json(

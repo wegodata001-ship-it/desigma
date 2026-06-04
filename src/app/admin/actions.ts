@@ -53,6 +53,18 @@ export type AdminOrderDetailDTO = {
   status: string;
   paymentStatus: string;
   fulfillmentStatus: string;
+  trackingStatus: string;
+  statusUpdatedAt: string | null;
+  trackingUrl: string | null;
+  trackingNumber: string | null;
+  trackingCarrier: string | null;
+  statusHistory: {
+    id: string;
+    status: string;
+    note: string | null;
+    createdAt: string;
+    updatedBy: string | null;
+  }[];
   subtotal: number;
   deliveryPrice: number;
   discountAmount: number;
@@ -96,6 +108,7 @@ export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDe
     include: {
       items: true,
       payments: true,
+      statusHistory: { orderBy: { createdAt: "asc" } },
       customerProfile: {
         include: { user: { select: { name: true, email: true } } },
       },
@@ -111,6 +124,18 @@ export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDe
     status: order.status,
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
+    trackingStatus: order.trackingStatus,
+    statusUpdatedAt: order.statusUpdatedAt?.toISOString() ?? null,
+    trackingUrl: order.trackingUrl,
+    trackingNumber: order.trackingNumber,
+    trackingCarrier: order.trackingCarrier,
+    statusHistory: order.statusHistory.map((h) => ({
+      id: h.id,
+      status: h.status,
+      note: h.note,
+      createdAt: h.createdAt.toISOString(),
+      updatedBy: h.updatedBy,
+    })),
     subtotal: Number(order.subtotal),
     deliveryPrice: Number(order.deliveryPrice),
     discountAmount: Number(order.discountAmount),
@@ -1540,22 +1565,46 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
   try {
     const { storeId, userId } = await guard();
     const id = formData.get("id") as string;
-    const status = formData.get("status") as string;
-    const paymentStatus = formData.get("paymentStatus") as string;
-    const fulfillmentRaw = String(formData.get("fulfillmentStatus") ?? "").trim();
-    const fulfillmentOk = ["RECEIVED", "PROCESSING", "PACKED", "SHIPPED", "COMPLETED"].includes(
-      fulfillmentRaw,
-    );
-    // Restore inventory when cancelling a previously active order (best-effort, backward compatible).
+    const trackingRaw = String(formData.get("trackingStatus") ?? "").trim();
+    const note = String(formData.get("statusNote") ?? "").trim();
+    const trackingUrl = String(formData.get("trackingUrl") ?? "").trim();
+    const trackingNumber = String(formData.get("trackingNumber") ?? "").trim();
+    const trackingCarrier = String(formData.get("trackingCarrier") ?? "").trim();
+
+    const TRACKING_VALUES = [
+      "NEW",
+      "PAID",
+      "PROCESSING",
+      "PACKED",
+      "SHIPPED",
+      "DELIVERED",
+      "CANCELLED",
+      "REFUNDED",
+    ] as const;
+    if (!TRACKING_VALUES.includes(trackingRaw as (typeof TRACKING_VALUES)[number])) {
+      return err("סטטוס מעקב לא תקין");
+    }
+
+    const { OrderTrackingStatus } = await import("@prisma/client");
+    const nextStatus = OrderTrackingStatus[trackingRaw as keyof typeof OrderTrackingStatus];
+
     const prev = await prisma.order.findFirst({
       where: { id, storeId },
-      select: { status: true, paymentStatus: true, fulfillmentStatus: true, inventoryReducedAt: true },
+      select: {
+        trackingStatus: true,
+        paymentStatus: true,
+        status: true,
+        inventoryReducedAt: true,
+      },
     });
-    const nextStatus = status as never;
-    const nextPayment = paymentStatus as never;
+    if (!prev) return err("הזמנה לא נמצאה");
 
-    await prisma.$transaction(async (tx) => {
-      if (prev?.status !== "CANCELLED" && status === "CANCELLED" && prev?.inventoryReducedAt) {
+    if (
+      prev.trackingStatus !== "CANCELLED" &&
+      nextStatus === OrderTrackingStatus.CANCELLED &&
+      prev.inventoryReducedAt
+    ) {
+      await prisma.$transaction(async (tx) => {
         const items = await tx.orderItem.findMany({
           where: { orderId: id, storeId },
           select: { productId: true, quantity: true, variantOptionIds: true },
@@ -1564,7 +1613,6 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
           if (!it.productId) continue;
           const optionIds = Array.isArray(it.variantOptionIds) ? it.variantOptionIds : [];
           if (optionIds.length > 0) {
-            // Increment only managed variant options (stock != null)
             await tx.productVariantOption.updateMany({
               where: { id: { in: optionIds }, stock: { not: null } },
               data: { stock: { increment: it.quantity } },
@@ -1580,41 +1628,35 @@ export async function updateOrderStatus(formData: FormData): Promise<AdminAction
           where: { id, storeId },
           data: { inventoryReducedAt: null },
         });
-      }
-
-      await tx.order.updateMany({
-        where: { id, storeId },
-        data: {
-          status: nextStatus,
-          paymentStatus: nextPayment,
-          ...(fulfillmentOk ? { fulfillmentStatus: fulfillmentRaw as never } : {}),
-        },
       });
-    });
+    }
 
-    // If admin marks order as PAID, reduce inventory immediately.
-    if (prev?.paymentStatus !== "PAID" && paymentStatus === "PAID") {
+    if (prev.paymentStatus !== "PAID" && nextStatus === OrderTrackingStatus.PAID) {
       const { reduceInventoryAfterPayment } = await import("@/lib/inventory/updateInventory");
       await reduceInventoryAfterPayment(id);
       const { notifyOrderPaidEmailsAsync } = await import("@/lib/notifications");
       notifyOrderPaidEmailsAsync(id);
     }
-    await logAdminAction({
-      userId,
-      action: "order.status.update",
-      entity: "Order",
-      entityId: id,
-      metadata: { status, paymentStatus, fulfillmentStatus: fulfillmentOk ? fulfillmentRaw : undefined },
+
+    const { recordOrderTrackingStatus } = await import("@/lib/orders/tracking-service");
+    await recordOrderTrackingStatus({
+      orderId: id,
+      storeId,
+      status: nextStatus,
+      note: note || undefined,
+      updatedBy: userId,
+      trackingUrl: trackingUrl || null,
+      trackingNumber: trackingNumber || null,
+      trackingCarrier: trackingCarrier || null,
     });
 
-    const fulfillmentChanged =
-      fulfillmentOk && prev?.fulfillmentStatus !== fulfillmentRaw;
-    const cancelledNow = prev?.status !== "CANCELLED" && status === "CANCELLED";
-    if (cancelledNow || fulfillmentChanged) {
-      const { notifyOrderStatusChangeAsync } = await import("@/lib/notifications");
-      const statusKey = cancelledNow ? "CANCELLED" : fulfillmentRaw;
-      notifyOrderStatusChangeAsync(id, statusKey);
-    }
+    await logAdminAction({
+      userId,
+      action: "order.tracking.update",
+      entity: "Order",
+      entityId: id,
+      metadata: { trackingStatus: trackingRaw, trackingUrl, trackingNumber },
+    });
 
     revalidatePath("/admin/orders");
     revalidatePath(`/admin/orders/${id}`);
