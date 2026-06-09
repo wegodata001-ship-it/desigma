@@ -149,7 +149,7 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "Store admin login",
-    adminPortalTagline: "Store Management Portal",
+    adminPortalTagline: "CITYPEL Admin Portal",
     adminWelcomeTitle: "Sign in to your store dashboard",
     adminWelcomeSubtitle: "Manage products, orders, and customers from one place.",
     adminLoginFormTitle: "Sign in",
@@ -576,7 +576,7 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "כניסת מנהל חנות",
-    adminPortalTagline: "Store Management Portal",
+    adminPortalTagline: "CITYPEL Admin Portal",
     adminWelcomeTitle: "כניסה למערכת ניהול החנות",
     adminWelcomeSubtitle: "נהל מוצרים, הזמנות ולקוחות ממקום אחד.",
     adminLoginFormTitle: "התחברות",
@@ -1001,7 +1001,7 @@ export const translations: Record<AdminLang, Record<string, string>> = {
 
     // Login admin
     adminLoginTitle: "دخول مدير المتجر",
-    adminPortalTagline: "Store Management Portal",
+    adminPortalTagline: "CITYPEL Admin Portal",
     adminWelcomeTitle: "الدخول إلى نظام إدارة المتجر",
     adminWelcomeSubtitle: "أدر المنتجات والطلبات والعملاء من مكان واحد.",
     adminLoginFormTitle: "تسجيل الدخول",

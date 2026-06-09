@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { SITE_NAME } from "@/lib/store";
 import type { UserRole } from "@prisma/client";
 import { CategoryAccordion } from "@/components/storefront/category-accordion";
 import { LogoutButton } from "@/components/logout-button";
@@ -44,7 +45,7 @@ export function MobileMenu({
             <div className="flex items-center justify-between">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-400/85">
-                  DESIGMA
+                  {SITE_NAME}
                 </div>
                 <div className="text-lg font-bold">{t("categories")}</div>
               </div>
@@ -128,6 +129,12 @@ export function MobileMenu({
                 </Link>
                 <Link href="/privacy" onClick={onClose} className="text-zinc-300 hover:text-orange-400">
                   {t("privacyPolicy")}
+                </Link>
+                <Link href="/refunds" onClick={onClose} className="text-zinc-300 hover:text-orange-400">
+                  {t("refundPolicy")}
+                </Link>
+                <Link href="/shipping" onClick={onClose} className="text-zinc-300 hover:text-orange-400">
+                  {t("shippingPolicy")}
                 </Link>
               </div>
             </div>

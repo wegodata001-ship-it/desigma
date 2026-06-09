@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { SITE_NAME } from "@/lib/store";
 import { pickLocalized } from "@/lib/localized";
 import { resolvePublicAssetSrc } from "@/lib/assets-path";
 
@@ -131,7 +132,7 @@ export function HeroSlider({ banners }: { banners: HeroBanner[] }) {
       <div className="relative z-10 mx-auto flex h-full min-h-[inherit]" dir={dir}>
         <div key={current.id} className={`${contentAlign} animate-in fade-in duration-700`}>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.35em] text-orange-400/95 sm:text-xs md:mb-3">
-            DESIGMA
+            {SITE_NAME}
           </p>
           <h1 className="max-w-xl text-3xl font-black leading-[1.08] tracking-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl lg:text-6xl">
             {title}

@@ -5,6 +5,7 @@ import { getCachedSession } from "@/lib/auth/cached-session";
 import { hasTrackingAccess } from "@/lib/orders/tracking-access";
 import { loadOrderTrackingView } from "@/lib/orders/tracking-data";
 import { prisma } from "@/lib/prisma";
+import { createSiteMetadata } from "@/lib/site-metadata";
 import { SITE_NAME, STORE_ID } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +16,7 @@ export async function generateMetadata({
   params: Promise<{ orderNumber: string }>;
 }): Promise<Metadata> {
   const { orderNumber } = await params;
-  return {
-    title: `מעקב הזמנה ${decodeURIComponent(orderNumber)} — DESIGMA`,
-  };
+  return createSiteMetadata(`מעקב הזמנה ${decodeURIComponent(orderNumber)}`);
 }
 
 export default async function TrackOrderDetailPage({

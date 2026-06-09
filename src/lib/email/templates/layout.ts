@@ -1,6 +1,7 @@
 import "server-only";
 
 import { EMAIL_STORE_NAME, emailLegalUrls, getEmailPublicBaseUrl } from "@/lib/email/email-links";
+import { STORE_TEAM_LABEL } from "@/lib/store-business";
 
 const BRAND = "#f97316";
 const BG = "#0a0f1a";
@@ -111,6 +112,7 @@ export function renderStandardEmailFooter(accent = BRAND): string {
   const urls = emailLegalUrls();
   return `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #334155;text-align:center;font-size:12px;line-height:1.8;color:${MUTED};">
     <div style="font-weight:800;font-size:13px;letter-spacing:0.12em;color:#e2e8f0;">${EMAIL_STORE_NAME}</div>
+    <p style="margin:8px 0 0;">${escapeHtml(STORE_TEAM_LABEL)}</p>
     <p style="margin:8px 0 0;">תודה על ההזמנה.</p>
     <p style="margin:4px 0 0;">לשירות לקוחות:<br/><a href="${urls.contact}" style="color:${accent};font-weight:600;">${urls.contact}</a></p>
     <p style="margin:4px 0 0;">תקנון:<br/><a href="${urls.terms}" style="color:${accent};">${urls.terms}</a></p>

@@ -4,6 +4,8 @@ import { emailLegalUrls, emailPublicPath, getEmailPublicBaseUrl } from "@/lib/em
 import { prisma } from "@/lib/prisma";
 import { getEmailConfig } from "@/lib/email/config";
 import { absoluteAssetUrl } from "@/lib/email/templates/layout";
+import { STORE_BUSINESS } from "@/lib/store-business";
+import { SITE_NAME } from "@/lib/store";
 
 export type StoreEmailBrand = {
   storeId: string;
@@ -47,10 +49,10 @@ export async function loadStoreEmailBrand(storeId: string): Promise<StoreEmailBr
 
   return {
     storeId,
-    name: store?.name?.trim() || cfg.fromName || "Store",
+    name: cfg.fromName || SITE_NAME || store?.name?.trim() || STORE_BUSINESS.name,
     logoUrl: absoluteAssetUrl(settings?.logoUrl),
-    phone: settings?.whatsappPhone?.trim() || null,
-    email: settings?.supportEmail?.trim() || cfg.contactReceiver || null,
+    phone: settings?.whatsappPhone?.trim() || STORE_BUSINESS.phone,
+    email: settings?.supportEmail?.trim() || STORE_BUSINESS.email || cfg.contactReceiver || null,
     accentColor: settings?.accentColor?.trim() || "#f97316",
     storeUrl,
     baseUrl: storeUrl,

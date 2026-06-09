@@ -15,7 +15,7 @@ export function getEmailConfig() {
     port: Number(process.env.SMTP_PORT?.trim() || "587"),
     user,
     pass,
-    fromName: process.env.EMAIL_FROM_NAME?.trim() || "DESIGMA",
+    fromName: process.env.EMAIL_FROM_NAME?.trim() || "CITYPEL",
     fromAddress: process.env.EMAIL_FROM_ADDRESS?.trim() || "noreply@desigma-shop.com",
     contactReceiver:
       process.env.CONTACT_RECEIVER_EMAIL?.trim() ||

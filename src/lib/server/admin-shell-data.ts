@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { STORE_ID } from "@/lib/store";
+import { SITE_NAME, STORE_ID } from "@/lib/store";
 import { perfQuery } from "@/lib/server/perf-query";
 import { safeQuery } from "@/lib/server/safe-query";
 
@@ -36,7 +36,7 @@ export const getCachedAdminShellData = cache(async (userId: string): Promise<Adm
   );
 
   return {
-    storeName: store?.name ?? "Store",
+    storeName: SITE_NAME,
     userName: user?.name ?? "Owner",
     logoPath: settings?.logoUrl ?? null,
     unreadContactCount: unreadContactCount ?? 0,

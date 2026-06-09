@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { SITE_NAME } from "@/lib/store";
 
 function mapLoginError(raw: string | undefined): string {
   if (!raw) return "משהו השתבש. נסו שוב.";
@@ -64,7 +65,11 @@ export function LoginPageClient() {
   return (
     <div className="mx-auto max-w-md px-4 py-10 md:py-16">
       <div className="ds-card-glass border-white/10 p-6 md:p-8">
-        <h1 className="text-center text-2xl font-bold tracking-tight text-slate-50">כניסת לקוחות</h1>
+        <p className="text-center text-xs font-bold uppercase tracking-[0.35em] text-orange-400">{SITE_NAME}</p>
+        <p className="mt-1 text-center text-[10px] font-medium tracking-[0.2em] text-slate-500 uppercase">
+          Store Management Portal
+        </p>
+        <h1 className="mt-4 text-center text-2xl font-bold tracking-tight text-slate-50">כניסת לקוחות</h1>
         <p className="mt-2 text-center text-sm text-slate-400">
           חשבון לקוח. ניהול חנות —{" "}
           <Link href="/login-admin" className="text-blue-400 hover:text-blue-300 hover:underline">

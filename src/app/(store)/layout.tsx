@@ -2,6 +2,7 @@ import { CartProvider } from "@/components/cart-context";
 import { CartRemovalToast } from "@/components/cart-removal-toast";
 import { SiteHeader } from "@/components/site-header";
 import { StoreFooter } from "@/components/storefront/store-footer";
+import { OrganizationJsonLd } from "@/components/storefront/organization-json-ld";
 import { StoreI18nProvider } from "@/components/storefront/store-i18n";
 import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 
@@ -13,6 +14,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
       <CartProvider>
         <CartRemovalToast />
         <div className="flex min-h-screen flex-col bg-gradient-to-b from-black via-zinc-950 to-black text-white pb-20 md:pb-0">
+          <OrganizationJsonLd />
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <StoreFooter />

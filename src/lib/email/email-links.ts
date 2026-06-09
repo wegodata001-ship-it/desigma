@@ -8,7 +8,9 @@ import {
   rewriteLocalhostUrlsInHtml,
 } from "@/lib/base-url";
 
-export const EMAIL_STORE_NAME = "DESIGMA";
+import { SITE_NAME } from "@/lib/store";
+
+export const EMAIL_STORE_NAME = SITE_NAME;
 
 /** Storefront origin for all transactional emails — never localhost. */
 export function getEmailPublicBaseUrl(): string {

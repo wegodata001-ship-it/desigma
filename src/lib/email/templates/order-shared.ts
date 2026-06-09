@@ -1,4 +1,5 @@
 import type { StoreEmailBrand } from "@/lib/email/store-branding";
+import { STORE_BUSINESS } from "@/lib/store-business";
 import { emailOrderViewUrl, emailTrackOrderUrl } from "@/lib/email/email-links";
 import { absoluteAssetUrl, emailButton, infoRow } from "@/lib/email/templates/layout";
 
@@ -119,8 +120,8 @@ export function renderLegalFooter(brand: StoreEmailBrand): string {
 }
 
 export function renderContactFooter(brand: StoreEmailBrand): string {
-  const phone = brand.phone || "054-2298822";
-  const email = brand.email || "m.desigma@gmail.com";
+  const phone = brand.phone || STORE_BUSINESS.phone;
+  const email = brand.email || STORE_BUSINESS.email;
   return `<div style="margin-top:20px;padding:16px;background:#0f172a;border-radius:12px;border:1px solid #334155;font-size:13px;color:#cbd5e1;">
     <div style="font-weight:700;color:#f97316;margin-bottom:8px;">יצירת קשר</div>
     <p style="margin:0;">טלפון: <a href="tel:${phone.replace(/\D/g, "")}" style="color:#fff;">${escapeHtml(phone)}</a></p>

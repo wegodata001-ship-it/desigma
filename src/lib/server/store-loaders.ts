@@ -32,19 +32,19 @@ export type CategoryNavItem = {
   imageUrl: string | null;
 };
 
+import { STORE_BUSINESS, STORE_LEGAL_LINKS } from "@/lib/store-business";
+
 export type FooterData = {
   legalLinks: { href: string; labelKey: string }[];
   supportEmail: string;
   phone: string;
+  address: string;
+  businessName: string;
 };
 
 const FOOTER_LINKS: FooterData["legalLinks"] = [
   { href: "/track-order", labelKey: "orderTracking" },
-  { href: "/legal", labelKey: "legalHubLink" },
-  { href: "/terms", labelKey: "termsOfUse" },
-  { href: "/privacy", labelKey: "privacyPolicy" },
-  { href: "/refunds", labelKey: "refundPolicy" },
-  { href: "/shipping", labelKey: "shippingPolicy" },
+  ...STORE_LEGAL_LINKS.map((l) => ({ href: l.href, labelKey: l.labelKey })),
 ];
 
 /** Store identity for current request — never uses storeId "base" on DESIGMA hosts. */
@@ -163,8 +163,10 @@ export async function getFooterData(): Promise<FooterData> {
 
   return {
     legalLinks: FOOTER_LINKS,
-    supportEmail: settings?.supportEmail?.trim() || "m.desigma@gmail.com",
-    phone: settings?.whatsappPhone?.trim() || "054-2298822",
+    supportEmail: settings?.supportEmail?.trim() || STORE_BUSINESS.email,
+    phone: settings?.whatsappPhone?.trim() || STORE_BUSINESS.phone,
+    address: STORE_BUSINESS.address,
+    businessName: STORE_BUSINESS.name,
   };
 }
 

@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import {
+  BusinessContactRow,
+  IconMail,
+  IconMapPin,
+  IconPhone,
+} from "@/components/storefront/business-icons";
 
 export function ContactPageClient({
+  businessName,
+  address,
   phone,
   email,
 }: {
+  businessName: string;
+  address: string;
   phone: string;
   email: string;
 }) {
@@ -45,16 +55,18 @@ export function ContactPageClient({
 
   return (
     <div dir="rtl" className="mx-auto max-w-xl px-4 py-12">
-      <h1 className="text-3xl font-black text-white">צור קשר</h1>
+      <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-500">{businessName}</p>
+      <h1 className="mt-2 text-3xl font-black text-white">צור קשר</h1>
       <p className="mt-2 text-sm text-zinc-400">נשמח לעזור בכל שאלה לגבי הזמנה, משלוח או החזרה.</p>
 
-      <div className="mt-8 grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-sm">
-        <a href={`tel:${phone.replace(/\D/g, "")}`} className="flex items-center gap-2 text-zinc-100 hover:text-orange-400">
-          <span aria-hidden>☎</span> {phone}
-        </a>
-        <a href={`mailto:${email}`} className="flex items-center gap-2 text-zinc-100 hover:text-orange-400">
-          <span aria-hidden>✉</span> {email}
-        </a>
+      <div className="mt-8 space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-sm">
+        <BusinessContactRow icon={<IconMapPin />}>{address}</BusinessContactRow>
+        <BusinessContactRow icon={<IconPhone />} href={`tel:${phone.replace(/\D/g, "")}`}>
+          {phone}
+        </BusinessContactRow>
+        <BusinessContactRow icon={<IconMail />} href={`mailto:${email}`}>
+          {email}
+        </BusinessContactRow>
       </div>
 
       {done ? (

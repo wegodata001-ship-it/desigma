@@ -5,13 +5,12 @@ import { getStoreId } from "@/lib/store-config";
 import { safeQuery } from "@/lib/server/safe-query";
 import { StoreProductDetailClient } from "@/components/storefront/store-product-detail-client";
 import { pickProductImageUrl, sortProductImages } from "@/lib/product-images";
+import { createSiteMetadata } from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export const metadata: Metadata = {
-  title: "מוצר — DESIGMA",
-};
+export const metadata: Metadata = createSiteMetadata("מוצר");
 
 const productInclude = {
   images: { orderBy: { sortOrder: "asc" as const } },

@@ -10,15 +10,13 @@ import {
   orderStatusLabelHe,
   paymentStatusLabelHe,
 } from "@/lib/orders/order-display-labels";
+import { createSiteMetadata } from "@/lib/site-metadata";
 import { SITE_NAME, STORE_ID } from "@/lib/store";
 import { isLikelyOrderId } from "@/lib/app-urls-shared";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "הזמנה שלי — DESIGMA",
-  description: "צפייה בסטטוס הזמנה, מוצרים, משלוח ותשלום",
-};
+export const metadata: Metadata = createSiteMetadata("הזמנה שלי");
 
 function OrderNotFound({ orderNumber }: { orderNumber: string }) {
   return (

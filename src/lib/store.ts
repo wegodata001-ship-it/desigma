@@ -22,7 +22,10 @@ const ASSETS_FOLDER_RAW = getPublicEnv("NEXT_PUBLIC_ASSETS_FOLDER", STORE_SLUG);
 /** Normalized folder segment for Supabase paths (no leading/trailing slashes). */
 export const ASSETS_FOLDER = ASSETS_FOLDER_RAW.replace(/^\/+|\/+$/g, "");
 
-export const SITE_NAME = getPublicEnv("NEXT_PUBLIC_SITE_NAME", "DESIGMA");
+export const SITE_NAME = getPublicEnv("NEXT_PUBLIC_SITE_NAME", "CITYPEL");
+
+export const SITE_DESCRIPTION =
+  "CITYPEL — חנות אלקטרוניקה פרימיום בישראל. מכשירים, אביזרים, משלוחים ושירות אישי.";
 
 export const storeIdentity = {
   storeId: STORE_ID,

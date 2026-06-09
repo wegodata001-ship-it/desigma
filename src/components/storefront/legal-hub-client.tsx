@@ -8,6 +8,15 @@ import { LEGAL_HUB, LEGAL_PAGES } from "@/lib/legal/page-meta";
 import { resolveLegalContent } from "@/lib/legal/resolve-content";
 import type { LegalTocEntry } from "@/lib/legal/toc";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { STORE_BUSINESS } from "@/lib/store-business";
+import { SITE_NAME } from "@/lib/store";
+import {
+  BusinessContactRow,
+  IconMail,
+  IconPackage,
+  IconPhone,
+  IconTruck,
+} from "@/components/storefront/business-icons";
 
 export type LegalHubSection = {
   tab: PolicyTab;
@@ -96,34 +105,22 @@ export function LegalHubClient({
         <header className="legal-hub__merchant rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 md:p-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-3xl font-black tracking-tight text-white md:text-4xl">DESIGMA</p>
+              <p className="text-3xl font-black tracking-tight text-white md:text-4xl">{SITE_NAME}</p>
               <p className="mt-2 text-sm text-zinc-400">{t("legalHubSubtitle")}</p>
             </div>
-            <div className="grid gap-3 text-sm text-zinc-200 sm:grid-cols-2 md:text-base">
-              <a href="tel:+972542298822" className="legal-hub__contact-link flex items-center gap-2">
-                <span className="text-orange-500" aria-hidden>
-                  ☎
-                </span>
-                054-2298822
-              </a>
-              <a href="mailto:m.desigma@gmail.com" className="legal-hub__contact-link flex items-center gap-2">
-                <span className="text-orange-500" aria-hidden>
-                  ✉
-                </span>
-                m.desigma@gmail.com
-              </a>
-              <p className="flex items-center gap-2 sm:col-span-2">
-                <span className="text-orange-500" aria-hidden>
-                  🚚
-                </span>
-                {t("legalHubShipping")}
-              </p>
-              <p className="flex items-center gap-2 sm:col-span-2">
-                <span className="text-orange-500" aria-hidden>
-                  📦
-                </span>
-                {t("legalHubPickup")}
-              </p>
+            <div className="grid gap-3 text-sm sm:grid-cols-2 md:text-base">
+              <BusinessContactRow icon={<IconPhone />} href={`tel:${STORE_BUSINESS.phoneTel}`}>
+                {STORE_BUSINESS.phone}
+              </BusinessContactRow>
+              <BusinessContactRow icon={<IconMail />} href={`mailto:${STORE_BUSINESS.email}`}>
+                {STORE_BUSINESS.email}
+              </BusinessContactRow>
+              <div className="sm:col-span-2">
+                <BusinessContactRow icon={<IconTruck />}>{t("legalHubShipping")}</BusinessContactRow>
+              </div>
+              <div className="sm:col-span-2">
+                <BusinessContactRow icon={<IconPackage />}>{t("legalHubPickup")}</BusinessContactRow>
+              </div>
             </div>
           </div>
         </header>

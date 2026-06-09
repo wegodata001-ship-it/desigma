@@ -5,6 +5,7 @@ import type { Locale } from "@/lib/localized";
 import { prepareLegalHtml } from "@/lib/legal/toc";
 import { resolveLegalContent } from "@/lib/legal/resolve-content";
 import { useStoreI18n } from "@/components/storefront/store-i18n";
+import { SITE_NAME } from "@/lib/store";
 
 export type LegalPageDebug = {
   storeId: string;
@@ -76,7 +77,7 @@ export function LegalDocumentClient({
     <section dir={dir} className="legal-page-shell border-t border-zinc-800/80 bg-zinc-950">
       <div className="legal-document scroll-smooth mx-auto w-full max-w-[1100px] px-4 py-12 md:px-8 md:py-16">
         <header className="legal-document__header">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-500">DESIGMA</p>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-500">{SITE_NAME}</p>
           <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl">
             {displayTitle}
           </h1>

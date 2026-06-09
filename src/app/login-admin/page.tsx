@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AdminI18nProvider, useAdminI18n } from "@/lib/admin-i18n";
+import { SITE_NAME } from "@/lib/store";
+import { STORE_BUSINESS } from "@/lib/store-business";
 
 export default function LoginAdminPage() {
   return (
@@ -173,7 +175,7 @@ function LoginAdminInner() {
               lineHeight: 1.1,
             }}
           >
-            DESIGMA
+            {SITE_NAME}
           </div>
           <p className="mt-1.5 text-[10px] font-medium tracking-[0.2em] text-white/45 uppercase">
             {t("adminPortalTagline")}
@@ -238,7 +240,7 @@ function LoginAdminInner() {
 
           <div className="flex justify-end pt-1">
             <a
-              href="mailto:support@desigma-shop.com"
+              href={`mailto:${STORE_BUSINESS.email}`}
               className="text-xs font-medium text-white/45 transition hover:text-[#ff7a00]"
             >
               {t("forgotPassword")}
