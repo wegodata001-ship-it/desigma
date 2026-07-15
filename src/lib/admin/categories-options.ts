@@ -8,12 +8,21 @@ export type CategoryOpt = { id: string; label: string };
 export async function loadAdminCategoryOptions(storeId: string): Promise<CategoryOpt[]> {
   return perfQuery("admin.products.categories", async () => {
     const categories = await prisma.category.findMany({
-      where: { storeId },
+      where: { storeId, active: true },
       orderBy: { sortOrder: "asc" },
-      select: { id: true, parentId: true, name_he: true, sortOrder: true },
+      select: { id: true, parentId: true, name_he: true, name_en: true, sortOrder: true },
     });
 
     const byId = new Map(categories.map((c) => [c.id, c] as const));
+
+    // If two actives share the same Hebrew path label, disambiguate with English name.
+    const pathCounts = new Map<string, number>();
+    for (const c of categories) {
+      const parent = c.parentId ? byId.get(c.parentId) : null;
+      const path = parent ? `${parent.name_he} > ${c.name_he}` : c.name_he;
+      pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+    }
+
     return categories
       .slice()
       .sort((a, b) => {
@@ -27,10 +36,11 @@ export async function loadAdminCategoryOptions(storeId: string): Promise<Categor
         return a.sortOrder - b.sortOrder;
       })
       .map((c) => {
-        if (!c.parentId) return { id: c.id, label: c.name_he };
-        const parent = byId.get(c.parentId);
-        const parentName = parent?.name_he ?? "קטגוריה";
-        return { id: c.id, label: `${parentName} > ${c.name_he}` };
+        const parent = c.parentId ? byId.get(c.parentId) : null;
+        const path = parent ? `${parent.name_he} > ${c.name_he}` : c.name_he;
+        const needsDisambiguation = (pathCounts.get(path) ?? 0) > 1;
+        const label = needsDisambiguation ? `${path} (${c.name_en})` : path;
+        return { id: c.id, label };
       });
   });
 }

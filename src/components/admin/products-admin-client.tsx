@@ -273,11 +273,18 @@ export function ProductsAdminClient({
       }
     }
 
+    const listCategoryLabel = (() => {
+      const raw = categories.find((c) => c.id === String(form.get("categoryId") ?? ""))?.label ?? "";
+      // Admin list shows leaf name only ("Galaxy A"), not the full path.
+      const parts = raw.split(">").map((s) => s.trim()).filter(Boolean);
+      return parts[parts.length - 1] ?? raw;
+    })();
     const listRow = patchProductListRowFromForm(
       form,
       pid,
       products.find((p) => p.id === pid),
       listImages,
+      listCategoryLabel,
     );
     patchList(pid, listRow, isNew);
 
@@ -543,6 +550,7 @@ function ProductForm({
 }) {
   const [pending, setPending] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? categories[0]?.id ?? "");
   const [variantGroups, setVariantGroups] = useState<
     Array<{
       id: string;
@@ -591,10 +599,14 @@ function ProductForm({
 
   useEffect(() => {
     if (!product?.id) return;
+    const nextId = product.categoryId;
+    setCategoryId(
+      categories.some((c) => c.id === nextId) ? nextId : categories[0]?.id ?? "",
+    );
     setSpecsHe(specsForForm(product.specs_he));
     setSpecsAr(specsForForm(product.specs_ar));
     setSpecsEn(specsForForm(product.specs_en));
-  }, [product?.id, product?.specs_he, product?.specs_ar, product?.specs_en]);
+  }, [product?.id, product?.categoryId, product?.specs_he, product?.specs_ar, product?.specs_en, categories]);
 
   async function internalSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -602,6 +614,7 @@ function ProductForm({
     const fd = new FormData(form);
     if (!product?.id) fd.append("id", "");
     else fd.set("id", product.id);
+    fd.set("categoryId", categoryId);
     const sku = (fd.get("sku") as string)?.trim();
     if (!sku && !product) {
       fd.set("sku", `SKU-${Date.now()}`);
@@ -716,7 +729,8 @@ function ProductForm({
           <select
             name="categoryId"
             required
-            defaultValue={product?.categoryId}
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           >
             {categories.map((c) => (

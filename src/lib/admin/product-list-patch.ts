@@ -71,7 +71,12 @@ export function patchProductListRowFromForm(
   productId: string,
   prev?: ProductListRow,
   images?: ListImage[],
+  categoryLabel?: string | null,
 ): ProductListRow {
+  const categoryName =
+    (categoryLabel ?? "").trim() ||
+    prev?.category?.name_he ||
+    "";
   return {
     id: productId,
     sku: String(form.get("sku") ?? prev?.sku ?? ""),
@@ -81,7 +86,7 @@ export function patchProductListRowFromForm(
     price: Number(form.get("price")),
     stock: Number(form.get("stock")),
     active: form.get("active") === "on",
-    category: prev?.category ?? { name_he: "" },
+    category: { name_he: categoryName },
     images: images ?? prev?.images ?? [],
   };
 }

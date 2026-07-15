@@ -35,7 +35,10 @@ export default async function ProductsPage({
   const byId = new Map(categories.map((c) => [c.id, c] as const));
   const selected = cat ? byId.get(cat) : null;
 
-  const smartphonesRoot = categories.find((c) => c.name_en === "Smartphones" || c.id.endsWith("-phone-smartphones"));
+  // Prefer the real catalog Smartphones root; avoid duplicate demo trees.
+  const smartphonesRoot =
+    categories.find((c) => c.id.endsWith("-cat-smartphones")) ??
+    categories.find((c) => c.name_en === "Smartphones");
 
   const categoryIds = selected
     ? collectDescendantCategoryIds(categories, selected.id)

@@ -283,7 +283,15 @@ export async function upsertProduct(formData: FormData): Promise<
     const { storeId, userId } = await guard();
     perfEnd(CREATE_PRODUCT_PERF.store, { storeId });
     const id = (formData.get("id") as string) || "";
-    const categoryId = formData.get("categoryId") as string;
+    const categoryId = String(formData.get("categoryId") ?? "").trim();
+    if (!categoryId) return err("יש לבחור קטגוריה");
+
+    const categoryOk = await prisma.category.findFirst({
+      where: { id: categoryId, storeId, active: true },
+      select: { id: true },
+    });
+    if (!categoryOk) return err("הקטגוריה שנבחרה לא קיימת או לא פעילה");
+
     const name_he = formData.get("name_he") as string;
     const name_ar = formData.get("name_ar") as string;
     const name_en = formData.get("name_en") as string;
